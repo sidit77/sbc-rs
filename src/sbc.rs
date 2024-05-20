@@ -1,20 +1,12 @@
-#![allow(dead_code, mutable_transmutes, non_camel_case_types, non_snake_case, non_upper_case_globals, unused_assignments, unused_mut)]
+#![allow(path_statements, dead_code, mutable_transmutes, non_camel_case_types, non_snake_case, non_upper_case_globals, unused_assignments, unused_mut)]
+use crate::bits::*;
+
 extern "C" {
     fn memset(
         _: *mut libc::c_void,
         _: libc::c_int,
         _: libc::c_ulong,
     ) -> *mut libc::c_void;
-    fn sbc_setup_bits(
-        bits: *mut sbc_bits_t,
-        mode: sbc_bits_mode,
-        data: *mut libc::c_void,
-        size: libc::c_uint,
-    );
-    fn sbc_tell_bits(bits: *mut sbc_bits_t) -> libc::c_uint;
-    fn sbc_flush_bits(bits: *mut sbc_bits_t);
-    fn __sbc_get_bits(_: *mut sbc_bits_t, _: libc::c_uint) -> libc::c_uint;
-    fn __sbc_put_bits(_: *mut sbc_bits_t, _: libc::c_uint, _: libc::c_uint);
 }
 pub type __uint8_t = libc::c_uchar;
 pub type __int16_t = libc::c_short;
@@ -39,7 +31,7 @@ pub type sbc_bam = libc::c_uint;
 pub const SBC_NUM_BAM: sbc_bam = 2;
 pub const SBC_BAM_SNR: sbc_bam = 1;
 pub const SBC_BAM_LOUDNESS: sbc_bam = 0;
-#[derive(Copy, Clone)]
+#[derive(Debug, Copy, Clone)]
 #[repr(C)]
 pub struct sbc_frame {
     pub msbc: bool,
@@ -79,14 +71,6 @@ pub union C2RustUnnamed {
 }
 pub type sbc_t = sbc;
 pub type sbc_bits_t = sbc_bits;
-#[derive(Copy, Clone)]
-#[repr(C)]
-pub struct sbc_bits {
-    pub mode: sbc_bits_mode,
-    pub data: C2RustUnnamed_1,
-    pub accu: C2RustUnnamed_0,
-    pub error: bool,
-}
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct C2RustUnnamed_0 {
@@ -1872,12 +1856,12 @@ pub unsafe extern "C" fn sbc_probe(
 ) -> libc::c_int {
     let mut bits: sbc_bits_t = sbc_bits_t {
         mode: SBC_BITS_READ,
-        data: C2RustUnnamed_1 {
+        data: sbc_bits_data {
             p: 0 as *mut uint8_t,
             nbytes: 0,
             nleft: 0,
         },
-        accu: C2RustUnnamed_0 {
+        accu: sbc_bits_accu {
             v: 0,
             nleft: 0,
             nover: 0,
@@ -1911,12 +1895,12 @@ pub unsafe extern "C" fn sbc_decode(
 ) -> libc::c_int {
     let mut bits: sbc_bits_t = sbc_bits_t {
         mode: SBC_BITS_READ,
-        data: C2RustUnnamed_1 {
+        data: sbc_bits_data {
             p: 0 as *mut uint8_t,
             nbytes: 0,
             nleft: 0,
         },
-        accu: C2RustUnnamed_0 {
+        accu: sbc_bits_accu {
             v: 0,
             nleft: 0,
             nover: 0,
@@ -3694,12 +3678,12 @@ pub unsafe extern "C" fn sbc_encode(
     }
     let mut bits: sbc_bits_t = sbc_bits_t {
         mode: SBC_BITS_READ,
-        data: C2RustUnnamed_1 {
+        data: sbc_bits_data {
             p: 0 as *mut uint8_t,
             nbytes: 0,
             nleft: 0,
         },
-        accu: C2RustUnnamed_0 {
+        accu: sbc_bits_accu {
             v: 0,
             nleft: 0,
             nover: 0,

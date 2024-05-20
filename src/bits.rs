@@ -1,4 +1,4 @@
-#![allow(dead_code, mutable_transmutes, non_camel_case_types, non_snake_case, non_upper_case_globals, unused_assignments, unused_mut)]
+#![allow(unused_parens, dead_code, mutable_transmutes, non_camel_case_types, non_snake_case, non_upper_case_globals, unused_assignments, unused_mut)]
 pub type __uint8_t = libc::c_uchar;
 pub type uint8_t = __uint8_t;
 pub type sbc_bits_mode = libc::c_uint;
@@ -9,20 +9,20 @@ pub type bits_accu_t = libc::c_uint;
 #[repr(C)]
 pub struct sbc_bits {
     pub mode: sbc_bits_mode,
-    pub data: C2RustUnnamed_0,
-    pub accu: C2RustUnnamed,
+    pub data: sbc_bits_data,
+    pub accu: sbc_bits_accu,
     pub error: bool,
 }
 #[derive(Copy, Clone)]
 #[repr(C)]
-pub struct C2RustUnnamed {
+pub struct sbc_bits_accu {
     pub v: bits_accu_t,
     pub nleft: libc::c_uint,
     pub nover: libc::c_uint,
 }
 #[derive(Copy, Clone)]
 #[repr(C)]
-pub struct C2RustUnnamed_0 {
+pub struct sbc_bits_data {
     pub p: *mut uint8_t,
     pub nbytes: libc::c_uint,
     pub nleft: libc::c_uint,
@@ -142,7 +142,7 @@ pub unsafe extern "C" fn sbc_setup_bits(
         let mut init = sbc_bits {
             mode: mode,
             data: {
-                let mut init = C2RustUnnamed_0 {
+                let mut init = sbc_bits_data {
                     p: data as *mut uint8_t,
                     nbytes: size,
                     nleft: size,
@@ -150,7 +150,7 @@ pub unsafe extern "C" fn sbc_setup_bits(
                 init
             },
             accu: {
-                let mut init = C2RustUnnamed {
+                let mut init = sbc_bits_accu {
                     v: 0,
                     nleft: (if mode as libc::c_uint
                         == SBC_BITS_READ as libc::c_int as libc::c_uint
