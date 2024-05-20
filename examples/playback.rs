@@ -20,20 +20,10 @@ fn main() -> anyhow::Result<()> {
 
     let file = std::fs::read("../bluefang/target/sbc/output.sbc")?;
     let mut decoder = Decoder::new(file);
-    let mut source = iter::from_fn(move || decoder.next_frame())
+    let mut source = iter::from_fn(move || decoder.next_frame().map(Vec::from))
         .inspect(|frame| println!("decoded {} samples", frame.len()))
         .flat_map(|frame| frame.into_iter())
         .chain(iter::repeat(0));
-    //let mut source = iter::from_fn(move || decoder
-    //    .next_frame()
-    //    .map_err(|e| eprintln!("error decoding frame: {}", e))
-    //    .ok())
-    //    .flat_map(|frame| frame.data.into_iter())
-    //    .chain(iter::repeat(0));
-
-    //let mut source = (0u64..)
-    //    .map(|i| (i as f32 * (100.0 + 200.0 * f32::sin(i as f32 * 0.00001)) * 2.0 * std::f32::consts::PI / 44000.0).sin())
-    //    .map(|s| (s * 0.7 * i16::MAX as f32) as i16);
 
     let stream = device.build_output_stream(
         &config,
