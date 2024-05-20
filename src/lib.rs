@@ -27,7 +27,7 @@ impl Decoder {
     pub fn new(data: Vec<u8>) -> Self {
         let mut sbc: Box<sbc_t> = unsafe { Box::new(zeroed()) };
         unsafe { sbc_reset(sbc.as_mut()) };
-        Self { data: data, index: 0, sbc, buffer: Vec::new() }
+        Self { data, index: 0, sbc, buffer: Vec::new() }
     }
 
     pub fn next_frame(&mut self) -> Option<&[i16]> {

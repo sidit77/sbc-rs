@@ -29,7 +29,7 @@ fn main() -> anyhow::Result<()> {
         &config,
         move |data: &mut [i16], _info| {
             println!("playing {} samples", data.len());
-            data.into_iter().for_each(|d| *d = source.next().unwrap());
+            data.iter_mut().for_each(|d| *d = source.next().unwrap());
         },
         move |err| {
             eprintln!("an error occurred on the output stream: {}", err);
