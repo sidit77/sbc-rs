@@ -81,13 +81,4 @@ mod tests {
         assert_eq!(count, 10416);
     }
 
-    #[test]
-    fn size_check() {
-        println!("{}", size_of::<libc::c_uchar>());
-        println!("{}", size_of::<libc::c_uint>());
-        println!("{}", size_of::<libc::c_ulong>());
-        println!("{}", size_of::<libc::c_int>());
-        println!("{}", size_of::<libc::c_void>());
-        println!("{}", size_of::<libc::c_short>());
-    }
 }
