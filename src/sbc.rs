@@ -133,17 +133,14 @@ unsafe extern "C" fn sbc_get_fixed(
         (*bits).error = 1 as libc::c_int != 0;
     }
 }
-static mut msbc_frame: sbc_frame = {
-    let mut init = sbc_frame {
-        msbc: 1 as libc::c_int != 0,
-        freq: SBC_FREQ_16K,
-        mode: SBC_MODE_MONO,
-        bam: SBC_BAM_LOUDNESS,
-        nblocks: 15 as libc::c_int,
-        nsubbands: 8 as libc::c_int,
-        bitpool: 26 as libc::c_int,
-    };
-    init
+static msbc_frame: sbc_frame = sbc_frame {
+    msbc: 1 as libc::c_int != 0,
+    freq: SBC_FREQ_16K,
+    mode: SBC_MODE_MONO,
+    bam: SBC_BAM_LOUDNESS,
+    nblocks: 15 as libc::c_int,
+    nsubbands: 8 as libc::c_int,
+    bitpool: 26 as libc::c_int,
 };
 unsafe extern "C" fn compute_crc(
     mut frame: *const sbc_frame,
@@ -2196,11 +2193,11 @@ unsafe extern "C" fn put_crc(
 ) -> libc::c_int {
     let mut crc: libc::c_int = compute_crc(frame, data as *const uint8_t, size);
     if crc < 0 as libc::c_int {
-        -(1 as libc::c_int);
+        -1
     } else {
         *(data as *mut uint8_t).offset(3 as libc::c_int as isize) = crc as uint8_t;
-    };
-    return 0 as libc::c_int;
+        0
+    }
 }
 unsafe extern "C" fn encode_frame(
     mut bits: *mut sbc_bits_t,

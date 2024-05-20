@@ -66,6 +66,7 @@ impl Decoder {
 
 #[cfg(test)]
 mod tests {
+    use std::mem::size_of;
     use super::*;
 
     #[test]
@@ -77,5 +78,16 @@ mod tests {
             count += 1;
         }
         println!("Decoded {} frames", count);
+        assert_eq!(count, 10416);
+    }
+
+    #[test]
+    fn size_check() {
+        println!("{}", size_of::<libc::c_uchar>());
+        println!("{}", size_of::<libc::c_uint>());
+        println!("{}", size_of::<libc::c_ulong>());
+        println!("{}", size_of::<libc::c_int>());
+        println!("{}", size_of::<libc::c_void>());
+        println!("{}", size_of::<libc::c_short>());
     }
 }
