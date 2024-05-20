@@ -5,3 +5,7 @@ edition = "2021"
 
 [dependencies]
 libc = "0.2.155"
+
+[dev-dependencies]
+cpal = "0.15.3"
+anyhow = "1.0.86"
