@@ -1,8 +1,8 @@
 use std::mem::zeroed;
 use crate::sbc::{sbc_decode, sbc_get_frame_size, SBC_MODE_MONO, sbc_probe, sbc_reset, sbc_t};
 
-pub mod bits;
-pub mod sbc;
+mod bits;
+mod sbc;
 
 pub const SBC_HEADER_SIZE: usize = 4;
 pub const SBC_PROBE_SIZE: usize = SBC_HEADER_SIZE;
@@ -28,6 +28,14 @@ impl Decoder {
         let mut sbc: Box<sbc_t> = unsafe { Box::new(zeroed()) };
         unsafe { sbc_reset(sbc.as_mut()) };
         Self { data, index: 0, sbc, buffer: Vec::new() }
+    }
+
+    pub fn refill_buffer(&mut self, data: &[u8]) {
+        let remaining = self.data.len() - self.index;
+        self.data.copy_within(self.index.., 0);
+        self.data.truncate(remaining);
+        self.index = 0;
+        self.data.extend_from_slice(data);
     }
 
     pub fn next_frame(&mut self) -> Option<&[i16]> {
@@ -60,6 +68,41 @@ impl Decoder {
             Some(&self.buffer)
         }
 
+    }
+
+    pub fn next_frame_lr(&mut self) -> Option<[&[i16]; 2]> {
+        let remaining = &self.data[self.index..];
+        if remaining.len() < SBC_PROBE_SIZE { return None; }
+        assert_eq!(remaining.len().min(SBC_PROBE_SIZE), SBC_PROBE_SIZE);
+        unsafe {
+            let mut frame = zeroed();
+            assert_eq!(sbc_probe(remaining.as_ptr().cast(), &mut frame), 0);
+            let frame_size = sbc_get_frame_size(&frame) as usize;
+            if remaining.len() < frame_size { return None; }
+            assert_eq!(remaining.len().min(frame_size), frame_size);
+
+            let nch = if frame.mode == SBC_MODE_MONO { 1 } else { 2 };
+            let nr_of_samples = (frame.nblocks * frame.nsubbands) as usize;
+            self.buffer.resize(nch as usize * nr_of_samples, 0);
+
+            assert_eq!(sbc_decode(
+                &mut *self.sbc,
+                remaining.as_ptr().cast(),
+                remaining.len() as _,
+                &mut frame,
+                self.buffer.as_mut_ptr(),
+                1,
+                self.buffer.as_mut_ptr().add(nr_of_samples),
+                1
+            ), 0);
+
+            if frame.mode == SBC_MODE_MONO {
+                self.buffer.copy_within(0..nr_of_samples, nr_of_samples);
+            }
+
+            self.index += frame_size;
+            Some([&self.buffer[..nr_of_samples], &self.buffer[nr_of_samples..]])
+        }
     }
 
 }

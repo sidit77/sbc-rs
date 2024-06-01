@@ -9,19 +9,16 @@ pub type int16_t = __int16_t;
 pub type int32_t = __int32_t;
 pub type uint8_t = __uint8_t;
 pub type sbc_freq = c_uint;
-pub const SBC_NUM_FREQ: sbc_freq = 4;
 pub const SBC_FREQ_48K: sbc_freq = 3;
 pub const SBC_FREQ_44K1: sbc_freq = 2;
 pub const SBC_FREQ_32K: sbc_freq = 1;
 pub const SBC_FREQ_16K: sbc_freq = 0;
 pub type sbc_mode = c_uint;
-pub const SBC_NUM_MODE: sbc_mode = 4;
 pub const SBC_MODE_JOINT_STEREO: sbc_mode = 3;
 pub const SBC_MODE_STEREO: sbc_mode = 2;
 pub const SBC_MODE_DUAL_CHANNEL: sbc_mode = 1;
 pub const SBC_MODE_MONO: sbc_mode = 0;
 pub type sbc_bam = c_uint;
-pub const SBC_NUM_BAM: sbc_bam = 2;
 pub const SBC_BAM_SNR: sbc_bam = 1;
 pub const SBC_BAM_LOUDNESS: sbc_bam = 0;
 #[derive(Debug, Copy, Clone)]
@@ -64,21 +61,6 @@ pub union C2RustUnnamed {
 }
 pub type sbc_t = sbc;
 pub type sbc_bits_t = sbc_bits;
-#[derive(Copy, Clone)]
-#[repr(C)]
-pub struct C2RustUnnamed_0 {
-    pub v: bits_accu_t,
-    pub nleft: c_uint,
-    pub nover: c_uint,
-}
-pub type bits_accu_t = c_uint;
-#[derive(Copy, Clone)]
-#[repr(C)]
-pub struct C2RustUnnamed_1 {
-    pub p: *mut uint8_t,
-    pub nbytes: c_uint,
-    pub nleft: c_uint,
-}
 pub type sbc_bits_mode = c_uint;
 pub const SBC_BITS_WRITE: sbc_bits_mode = 1;
 pub const SBC_BITS_READ: sbc_bits_mode = 0;
