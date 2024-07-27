@@ -1,26 +1,11 @@
 use std::mem::size_of;
+use std::slice;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub enum Mode {
     Read,
     Write,
 }
-
-//struct BitsData {
-//    p: *mut u8,
-//    nbytes: usize,
-//    nleft: usize,
-//}
-//
-//type BitAccuT = u32;
-//
-//struct BitsAccu {
-//    v: BitAccuT,
-//    nleft: usize,
-//    nover: usize,
-//}
-//
-
 
 type BitAccuT = u32;
 
@@ -37,31 +22,22 @@ impl Accu {
 }
 
 #[derive(Copy, Clone)]
-pub struct Data {
-    pub p: *mut u8,
-    pub nbytes: usize,
-    pub nleft: usize,
-}
-
-#[derive(Copy, Clone)]
-pub struct Bits {
+pub struct Bits<'a> {
     mode: Mode,
-    data: Data,
+    data: &'a [u8],
+    pos: usize,
     accu: Accu,
     error: bool,
 }
 
-impl Bits {
+impl<'a> Bits<'a> {
 
     #[inline]
     pub fn new(mode: Mode, data: *mut u8, size: usize) -> Self {
         Self {
             mode,
-            data: Data {
-                p: data,
-                nbytes: size,
-                nleft: size,
-            },
+            data: unsafe { slice::from_raw_parts(data, size)},
+            pos: 0,
             accu: Accu {
                 v: 0,
                 nleft: if mode == Mode::Read { 0 } else { Accu::BITS },
@@ -78,7 +54,7 @@ impl Bits {
 
     #[inline]
     pub fn pos(&self) -> usize {
-        let mut nbytes = self.data.nbytes - self.data.nleft;
+        let mut nbytes = self.pos;
         if self.mode == Mode::Write {
             nbytes += Accu::BYTES;
         }
@@ -119,7 +95,12 @@ impl Bits {
     }
 }
 
-impl Bits {
+impl<'a> Bits<'a> {
+
+    #[inline]
+    fn remaining(&self) -> usize {
+        self.data.len() - self.pos
+    }
 
     fn get_bits_internal(&mut self, mut n: u32) -> u32 {
         n = n.min(u32::BITS);
@@ -142,14 +123,13 @@ impl Bits {
     fn load_accu(&mut self) {
         debug_assert_eq!(self.accu.nleft, 0);
         let mut nbytes = Accu::BYTES;
-        if nbytes > self.data.nleft {
+        if nbytes > self.remaining() {
             self.load_accu_slow();
         } else {
             self.accu.nleft += nbytes << 3;
-            self.data.nleft -= nbytes;
             while nbytes > 0 {
-                self.accu.v = self.accu.v << 8 | unsafe { self.data.p.read() as u32 };
-                self.data.p = unsafe { self.data.p.offset(1) };
+                self.accu.v = self.accu.v << 8 | self.data[self.pos] as u32;
+                self.pos += 1;
                 nbytes -= 1;
             }
         }
@@ -157,12 +137,10 @@ impl Bits {
 
     #[inline]
     fn load_accu_slow(&mut self) {
-        while self.accu.nleft < Accu::BITS - 7 && self.data.nleft > 0
+        while self.accu.nleft < Accu::BITS - 7 && self.remaining() > 0
         {
-            let fresh0 = unsafe { self.data.p.read() };
-            self.data.p = unsafe { self.data.p.offset(1) };
-            self.data.nleft -= 1;
-            self.accu.v = self.accu.v << 8 | (fresh0 as u32);
+            self.accu.v = self.accu.v << 8 | (self.data[self.pos] as u32);
+            self.pos += 1;
             self.accu.nleft += 8;
         }
         if self.accu.nleft < Accu::BITS - 7 {
