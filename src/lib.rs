@@ -3,6 +3,7 @@ use crate::sbc::{sbc_decode, sbc_get_frame_size, SBC_MODE_MONO, sbc_probe, sbc_r
 
 mod bits;
 mod sbc;
+mod bits2;
 
 pub const SBC_HEADER_SIZE: usize = 4;
 pub const SBC_PROBE_SIZE: usize = SBC_HEADER_SIZE;

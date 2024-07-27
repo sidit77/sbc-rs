@@ -1,6 +1,6 @@
 #![allow(non_camel_case_types, non_snake_case, non_upper_case_globals, clippy::missing_safety_doc)]
-use std::ffi::{c_int, c_short, c_uchar, c_uint, c_ulong, c_void};
-use crate::bits::*;
+use std::ffi::{c_int, c_short, c_uchar, c_uint, c_void};
+use crate::bits2::{Bits, Mode};
 
 pub type __uint8_t = c_uchar;
 pub type __int16_t = c_short;
@@ -60,54 +60,7 @@ pub union C2RustUnnamed {
     pub estates: [sbc_estate; 2],
 }
 pub type sbc_t = sbc;
-pub type sbc_bits_t = sbc_bits;
-pub type sbc_bits_mode = c_uint;
-pub const SBC_BITS_WRITE: sbc_bits_mode = 1;
-pub const SBC_BITS_READ: sbc_bits_mode = 0;
-#[inline]
-unsafe extern "C" fn sbc_bits_error(bits: *mut sbc_bits) -> bool {
-    (*bits).error
-}
-#[inline]
-unsafe extern "C" fn sbc_get_bits(
-    bits: *mut sbc_bits,
-    n: c_uint,
-) -> c_uint {
-    if (*bits).accu.nleft < n {
-        return __sbc_get_bits(bits, n);
-    }
-    (*bits).accu.nleft = ((*bits).accu.nleft).wrapping_sub(n);
-    (*bits).accu.v >> (*bits).accu.nleft
-        & ((1 as c_uint) << n).wrapping_sub(1 as c_int as c_uint)
-}
-#[inline]
-unsafe extern "C" fn sbc_put_bits(
-    bits: *mut sbc_bits,
-    v: c_uint,
-    n: c_uint,
-) {
-    if (*bits).accu.nleft < n {
-        __sbc_put_bits(bits, v, n);
-    } else {
-        (*bits).accu.nleft = ((*bits).accu.nleft).wrapping_sub(n);
-        (*bits)
-            .accu
-            .v = (*bits).accu.v << n
-            | v
-            & ((1 as c_uint) << n)
-            .wrapping_sub(1 as c_int as c_uint);
-    };
-}
-#[inline]
-unsafe extern "C" fn sbc_get_fixed(
-    bits: *mut sbc_bits,
-    n: c_uint,
-    v: c_uint,
-) {
-    if sbc_get_bits(bits, n) != v {
-        (*bits).error = 1 as c_int != 0;
-    }
-}
+
 static msbc_frame: sbc_frame = sbc_frame {
     msbc: 1 as c_int != 0,
     freq: SBC_FREQ_16K,
@@ -475,7 +428,7 @@ pub unsafe extern "C" fn sbc_reset(sbc: *mut sbc) {
     };
 }
 unsafe extern "C" fn decode_header(
-    bits: *mut sbc_bits_t,
+    bits: &mut Bits,
     frame: *mut sbc_frame,
     crc: *mut c_int,
 ) -> bool {
@@ -492,46 +445,28 @@ unsafe extern "C" fn decode_header(
         SBC_MODE_JOINT_STEREO,
     ];
     static mut dec_bam: [sbc_bam; 2] = [SBC_BAM_LOUDNESS, SBC_BAM_SNR];
-    let mut __bits: *mut sbc_bits_t = bits;
-    let syncword: c_int = sbc_get_bits(
-        __bits,
-        8 as c_int as c_uint,
-    ) as c_int;
-    (*frame).msbc = syncword == 0xad as c_int;
+    let syncword = bits.get_bits(8);
+    (*frame).msbc = syncword == 0xad;
     if (*frame).msbc {
-        sbc_get_bits(__bits, 16 as c_int as c_uint);
+        bits.advance(16);
         *frame = msbc_frame;
-    } else if syncword == 0x9c as c_int {
-        (*frame)
-            .freq = dec_freq[sbc_get_bits(__bits, 2 as c_int as c_uint)
-            as usize];
-        (*frame)
-            .nblocks = ((1 as c_int as c_uint)
-            .wrapping_add(sbc_get_bits(__bits, 2 as c_int as c_uint))
-            << 2 as c_int) as c_int;
-        (*frame)
-            .mode = dec_mode[sbc_get_bits(__bits, 2 as c_int as c_uint)
-            as usize];
-        (*frame)
-            .bam = dec_bam[sbc_get_bits(__bits, 1 as c_int as c_uint)
-            as usize];
-        (*frame)
-            .nsubbands = ((1 as c_int as c_uint)
-            .wrapping_add(sbc_get_bits(__bits, 1 as c_int as c_uint))
-            << 2 as c_int) as c_int;
-        (*frame)
-            .bitpool = sbc_get_bits(__bits, 8 as c_int as c_uint)
-            as c_int;
+    } else if syncword == 0x9c {
+        (*frame).freq = dec_freq[bits.get_bits(2) as usize];
+        (*frame).nblocks = ((1 + bits.get_bits(2)) << 2) as c_int;
+        (*frame).mode = dec_mode[bits.get_bits(2) as usize];
+        (*frame).bam = dec_bam[bits.get_bits(1) as usize];
+        (*frame).nsubbands = ((1 + bits.get_bits(1)) << 2) as c_int;
+        (*frame).bitpool = bits.get_bits(8) as c_int;
     } else {
-        return 0 as c_int != 0
+        return false
     }
     if !crc.is_null() {
-        *crc = sbc_get_bits(__bits, 8 as c_int as c_uint) as c_int;
+        *crc = bits.get_bits(8) as c_int;
     }
     check_frame(frame)
 }
 unsafe extern "C" fn decode_frame(
-    bits: *mut sbc_bits_t,
+    bits: &mut Bits,
     frame: *const sbc_frame,
     sb_samples: *mut [int16_t; 128],
     sb_scale: *mut c_int,
@@ -554,13 +489,12 @@ unsafe extern "C" fn decode_frame(
         0x2000 as c_int,
         0x1000 as c_int,
     ];
-    let mut __bits: *mut sbc_bits_t = bits;
-    let mut mjoint: c_uint = 0 as c_int as c_uint;
+    let mut mjoint: c_uint = 0;
     if (*frame).mode as c_uint
         == SBC_MODE_JOINT_STEREO as c_int as c_uint
         && (*frame).nsubbands == 4 as c_int
     {
-        let v: c_uint = sbc_get_bits(__bits, 4 as c_int as c_uint);
+        let v: c_uint = bits.get_bits(4);
         mjoint = ((0 as c_int) << 3 as c_int) as c_uint
             | (v & 0x2 as c_int as c_uint) << 1 as c_int
             | (v & 0x4 as c_int as c_uint) >> 1 as c_int
@@ -568,10 +502,7 @@ unsafe extern "C" fn decode_frame(
     } else if (*frame).mode as c_uint
         == SBC_MODE_JOINT_STEREO as c_int as c_uint
     {
-        let v_0: c_uint = sbc_get_bits(
-            __bits,
-            8 as c_int as c_uint,
-        );
+        let v_0 = bits.get_bits(8) as c_uint;
         mjoint = ((0 as c_int) << 7 as c_int) as c_uint
             | (v_0 & 0x2 as c_int as c_uint) << 5 as c_int
             | (v_0 & 0x4 as c_int as c_uint) << 3 as c_int
@@ -591,10 +522,7 @@ unsafe extern "C" fn decode_frame(
     while ich < nchannels {
         let mut isb: c_int = 0 as c_int;
         while isb < nsubbands {
-            scale_factors[ich
-                as usize][isb
-                as usize] = sbc_get_bits(__bits, 4 as c_int as c_uint)
-                as c_int;
+            scale_factors[ich as usize][isb as usize] = bits.get_bits(4) as c_int;
             isb += 1;
         }
         ich += 1;
@@ -664,8 +592,7 @@ unsafe extern "C" fn decode_frame(
                     p_sb_samples = p_sb_samples.offset(1);
                     *fresh2 = 0 as c_int as int16_t;
                 } else {
-                    let mut s: c_int = sbc_get_bits(__bits, nbit as c_uint)
-                        as c_int;
+                    let mut s = bits.get_bits(nbit as _) as c_int;
                     s = (s << 1 as c_int | 1 as c_int)
                         * range_scale[(nbit - 1 as c_int) as usize];
                     let fresh3 = p_sb_samples;
@@ -709,16 +636,9 @@ unsafe extern "C" fn decode_frame(
         }
         isb_2 += 1;
     }
-    let padding_nbits: c_int = (8 as c_int as c_uint)
-        .wrapping_sub(
-            (sbc_tell_bits(bits)).wrapping_rem(8 as c_int as c_uint),
-        ) as c_int;
-    if padding_nbits < 8 as c_int {
-        sbc_get_fixed(
-            __bits,
-            padding_nbits as c_uint,
-            0 as c_int as c_uint,
-        );
+    let padding_nbits = 8 - bits.pos() % 8;
+    if padding_nbits < 8 {
+        bits.get_bits_fixed(padding_nbits, 0);
     }
 }
 #[inline]
@@ -1559,32 +1479,11 @@ pub unsafe extern "C" fn sbc_probe(
     data: *const c_void,
     frame: *mut sbc_frame,
 ) -> c_int {
-    let mut bits: sbc_bits_t = sbc_bits_t {
-        mode: SBC_BITS_READ,
-        data: sbc_bits_data {
-            p: std::ptr::null_mut::<uint8_t>(),
-            nbytes: 0,
-            nleft: 0,
-        },
-        accu: sbc_bits_accu {
-            v: 0,
-            nleft: 0,
-            nover: 0,
-        },
-        error: false,
-    };
-    sbc_setup_bits(
-        &mut bits,
-        SBC_BITS_READ,
-        data as *mut c_void,
-        4 as c_int as c_uint,
-    );
-    if !decode_header(&mut bits, frame, std::ptr::null_mut::<c_int>())
-        || sbc_bits_error(&mut bits) as c_int != 0
-    {
-        -(1 as c_int)
+    let mut bits = Bits::new(Mode::Read, data as *mut u8, 4);
+    if !decode_header(&mut bits, frame, std::ptr::null_mut::<c_int>()) || bits.has_error() {
+        -1
     } else {
-        0 as c_int
+        0
     }
 }
 #[no_mangle]
@@ -1598,35 +1497,15 @@ pub unsafe extern "C" fn sbc_decode(
     pcmr: *mut int16_t,
     pitchr: c_int,
 ) -> c_int {
-    let mut bits: sbc_bits_t = sbc_bits_t {
-        mode: SBC_BITS_READ,
-        data: sbc_bits_data {
-            p: std::ptr::null_mut::<uint8_t>(),
-            nbytes: 0,
-            nleft: 0,
-        },
-        accu: sbc_bits_accu {
-            v: 0,
-            nleft: 0,
-            nover: 0,
-        },
-        error: false,
-    };
     let mut crc: c_int = 0;
     if !data.is_null() {
         if size < 4 as c_int as c_uint {
             return -(1 as c_int);
         }
-        sbc_setup_bits(
-            &mut bits,
-            SBC_BITS_READ,
-            data as *mut c_void,
-            4 as c_int as c_uint,
-        );
-        if !decode_header(&mut bits, frame, &mut crc)
-            || sbc_bits_error(&mut bits) as c_int != 0
+        let mut bits = Bits::new(Mode::Read, data as *mut u8, 4);
+        if !decode_header(&mut bits, frame, &mut crc) || bits.has_error()
         {
-            return -(1 as c_int);
+            return -1;
         }
         if size < sbc_get_frame_size(frame)
             || compute_crc(frame, data as *const uint8_t, size) != crc
@@ -1637,12 +1516,7 @@ pub unsafe extern "C" fn sbc_decode(
     let mut sb_samples: [[int16_t; 128]; 2] = [[0; 128]; 2];
     let mut sb_scale: [c_int; 2] = [0; 2];
     if !data.is_null() {
-        sbc_setup_bits(
-            &mut bits,
-            SBC_BITS_READ,
-            data.add(4) as *mut c_void,
-            sbc_get_frame_size(frame) - 4,
-        );
+        let mut bits = Bits::new(Mode::Read, data.offset(4) as *mut u8, sbc_get_frame_size(frame) as usize - 4);
         decode_frame(&mut bits, frame, sb_samples.as_mut_ptr(), sb_scale.as_mut_ptr());
         (*sbc)
             .nchannels = 1 as c_int
@@ -1689,6 +1563,7 @@ pub unsafe extern "C" fn sbc_decode(
     }
     0 as c_int
 }
+/*
 unsafe extern "C" fn compute_scale_factors_js(
     frame: *const sbc_frame,
     sb_samples: *const [int16_t; 128],
@@ -1814,6 +1689,7 @@ unsafe extern "C" fn compute_scale_factors(
         ich += 1;
     }
 }
+
 unsafe extern "C" fn encode_header(
     bits: *mut sbc_bits_t,
     frame: *const sbc_frame,
@@ -1886,6 +1762,7 @@ unsafe extern "C" fn encode_header(
         8 as c_int as c_uint,
     );
 }
+
 unsafe extern "C" fn put_crc(
     frame: *const sbc_frame,
     data: *mut c_void,
@@ -1899,6 +1776,7 @@ unsafe extern "C" fn put_crc(
         0
     }
 }
+
 unsafe extern "C" fn encode_frame(
     bits: *mut sbc_bits_t,
     frame: *const sbc_frame,
@@ -3301,6 +3179,7 @@ unsafe extern "C" fn analyze(
         iblk += 1;
     }
 }
+
 #[no_mangle]
 pub unsafe extern "C" fn sbc_encode(
     sbc: *mut sbc,
@@ -3367,3 +3246,4 @@ pub unsafe extern "C" fn sbc_encode(
     put_crc(frame, data, size);
     0 as c_int
 }
+*/
