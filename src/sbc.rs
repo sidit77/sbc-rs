@@ -638,7 +638,7 @@ unsafe extern "C" fn decode_frame(
     }
     let padding_nbits = 8 - bits.pos() % 8;
     if padding_nbits < 8 {
-        bits.get_bits_fixed(padding_nbits, 0);
+        bits.get_bits_fixed(padding_nbits as u32, 0);
     }
 }
 #[inline]
