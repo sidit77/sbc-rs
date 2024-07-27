@@ -3,6 +3,10 @@ name = "sbc-rs"
 version = "0.1.0"
 edition = "2021"
 
+[[bench]]
+name = "decoding"
+harness = false
+
 [dependencies]
 
 [dev-dependencies]
@@ -10,3 +14,4 @@ cpal = "0.15.3"
 anyhow = "1.0.86"
 crc32fast = "1.4.2"
 bytemuck = "1.16.0"
+criterion = "0.5.1"
