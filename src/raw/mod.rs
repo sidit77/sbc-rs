@@ -1482,7 +1482,7 @@ pub unsafe extern "C" fn sbc_probe(
     data: *const c_void,
     frame: *mut sbc_frame,
 ) -> c_int {
-    let mut bits = Bits::new(Mode::Read, data as *mut u8, 4);
+    let mut bits = Bits::from_raw(Mode::Read, data as *mut u8, 4);
     if !decode_header(&mut bits, frame, std::ptr::null_mut::<c_int>()) || bits.has_error() {
         -1
     } else {
@@ -1505,7 +1505,7 @@ pub unsafe extern "C" fn sbc_decode(
         if size < 4 as c_int as c_uint {
             return -(1 as c_int);
         }
-        let mut bits = Bits::new(Mode::Read, data as *mut u8, 4);
+        let mut bits = Bits::from_raw(Mode::Read, data as *mut u8, 4);
         if !decode_header(&mut bits, frame, &mut crc) || bits.has_error()
         {
             return -1;
@@ -1519,7 +1519,7 @@ pub unsafe extern "C" fn sbc_decode(
     let mut sb_samples: [[int16_t; 128]; 2] = [[0; 128]; 2];
     let mut sb_scale: [c_int; 2] = [0; 2];
     if !data.is_null() {
-        let mut bits = Bits::new(Mode::Read, data.offset(4) as *mut u8, sbc_get_frame_size(frame) as usize - 4);
+        let mut bits = Bits::from_raw(Mode::Read, data.offset(4) as *mut u8, sbc_get_frame_size(frame) as usize - 4);
         decode_frame(&mut bits, frame, sb_samples.as_mut_ptr(), sb_scale.as_mut_ptr());
         (*sbc)
             .nchannels = 1 as c_int

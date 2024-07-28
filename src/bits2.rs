@@ -33,10 +33,10 @@ pub struct Bits<'a> {
 impl<'a> Bits<'a> {
 
     #[inline]
-    pub fn new(mode: Mode, data: *mut u8, size: usize) -> Self {
+    pub fn new(mode: Mode, data: &'a [u8]) -> Self {
         Self {
             mode,
-            data: unsafe { slice::from_raw_parts(data, size)},
+            data,
             pos: 0,
             accu: Accu {
                 v: 0,
@@ -45,6 +45,11 @@ impl<'a> Bits<'a> {
             },
             error: false,
         }
+    }
+
+    #[inline]
+    pub unsafe fn from_raw(mode: Mode, data: *mut u8, size: usize) -> Self {
+        Self::new(mode, slice::from_raw_parts(data, size))
     }
 
     #[inline]

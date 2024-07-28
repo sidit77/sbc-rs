@@ -1,7 +1,7 @@
 use std::mem::zeroed;
+use crate::decoder::{SbcHeader};
 use crate::raw::{sbc_decode, sbc_get_frame_size, SBC_MODE_MONO, sbc_probe, sbc_reset, sbc_t};
 
-mod sbc;
 mod bits2;
 mod decoder;
 mod raw;
@@ -42,26 +42,25 @@ impl Decoder {
 
     pub fn next_frame(&mut self) -> Option<&[i16]> {
         let remaining = &self.data[self.index..];
-        if remaining.len() < SBC_PROBE_SIZE { return None; }
-        assert_eq!(remaining.len().min(SBC_PROBE_SIZE), SBC_PROBE_SIZE);
+        if remaining.len() < SbcHeader::SIZE { return None; }
+
+        let header = SbcHeader::read(remaining).unwrap();
+        let frame_size = header.frame_size();
+        if remaining.len() < frame_size { return None; }
+
+        let nch = header.channels();
+        let nr_of_samples = nch * header.blocks * header.subbands;
+        self.buffer.resize(nr_of_samples as usize, 0);
+
         unsafe {
             let mut frame = zeroed();
-            assert_eq!(sbc_probe(remaining.as_ptr().cast(), &mut frame), 0);
-            let frame_size = sbc_get_frame_size(&frame) as usize;
-            if remaining.len() < frame_size { return None; }
-            assert_eq!(remaining.len().min(frame_size), frame_size);
-
-            let nch = if frame.mode == SBC_MODE_MONO { 1 } else { 2 };
-            let nr_of_samples = nch * frame.nblocks * frame.nsubbands;
-            self.buffer.resize(nr_of_samples as usize, 0);
-
             assert_eq!(sbc_decode(
                 &mut *self.sbc,
                 remaining.as_ptr().cast(),
                 remaining.len() as _,
                 &mut frame,
                 self.buffer.as_mut_ptr(),
-                nch,
+                nch as i32,
                 self.buffer.as_mut_ptr().add(1),
                 2
             ), 0);
