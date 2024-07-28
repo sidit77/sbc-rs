@@ -1,4 +1,7 @@
 #![allow(non_camel_case_types, non_snake_case, non_upper_case_globals, clippy::missing_safety_doc)]
+
+mod bits;
+
 use std::ffi::{c_int, c_short, c_uchar, c_uint, c_void};
 use crate::bits2::{Bits, Mode};
 
@@ -413,7 +416,7 @@ pub unsafe extern "C" fn sbc_get_frame_bps(freq: sbc_freq) -> c_int {
 #[no_mangle]
 pub unsafe extern "C" fn sbc_reset(sbc: *mut sbc) {
     *sbc = {
-        
+
         sbc {
             nchannels: 0,
             nblocks: 0,
@@ -2089,10 +2092,10 @@ unsafe extern "C" fn analyze_4(
         as usize][0 as c_int as usize])
         .as_ptr()
         .offset(idx as isize) as *const [int16_t; 10];
-    
-    
-    
-    
+
+
+
+
     let mut y: [int16_t; 4] = [0; 4];
     let y0: c_int = (*x.offset(0 as c_int as isize))[0 as c_int as usize] as c_int
         * (*w0.offset(0 as c_int as isize))[0 as c_int as usize]

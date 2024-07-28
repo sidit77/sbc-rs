@@ -1,9 +1,10 @@
 use std::mem::zeroed;
-use crate::sbc::{sbc_decode, sbc_get_frame_size, SBC_MODE_MONO, sbc_probe, sbc_reset, sbc_t};
+use crate::raw::{sbc_decode, sbc_get_frame_size, SBC_MODE_MONO, sbc_probe, sbc_reset, sbc_t};
 
-mod bits;
 mod sbc;
 mod bits2;
+mod decoder;
+mod raw;
 
 pub const SBC_HEADER_SIZE: usize = 4;
 pub const SBC_PROBE_SIZE: usize = SBC_HEADER_SIZE;
