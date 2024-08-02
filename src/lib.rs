@@ -1,5 +1,5 @@
 use std::mem::zeroed;
-use crate::decoder::{SbcHeader};
+use crate::decoder::{decode, SbcHeader};
 use crate::raw::{sbc_decode, sbc_get_frame_size, SBC_MODE_MONO, sbc_probe, sbc_reset, sbc_t};
 
 mod bits2;
@@ -52,6 +52,7 @@ impl Decoder {
         let nr_of_samples = nch * header.blocks * header.subbands;
         self.buffer.resize(nr_of_samples as usize, 0);
 
+        decode(remaining, &mut self.buffer).unwrap();
         unsafe {
             let mut frame = zeroed();
             assert_eq!(sbc_decode(
