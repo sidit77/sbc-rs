@@ -1,3 +1,4 @@
+use std::panic::Location;
 use crate::bits2::{Bits, Mode as BitMode};
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
@@ -20,6 +21,26 @@ pub enum ChannelMode {
 pub enum Bam {
     Snr,
     Loudness,
+}
+
+#[derive(Debug, Copy, Clone)]
+pub struct SbcError {
+    location: &'static Location<'static>,
+}
+
+impl SbcError {
+    #[track_caller]
+    fn new() -> Self {
+        Self { location: Location::caller() }
+    }
+}
+
+macro_rules! ensure {
+    ($cond:expr) => {
+        if !$cond {
+            return Err(SbcError::new());
+        }
+    };
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
@@ -51,8 +72,8 @@ impl SbcHeader {
         }
     }
 
-    pub fn read(data: &[u8]) -> Option<Self> {
-        let mut bits = Bits::new(BitMode::Read, data.get(..Self::SIZE)?);
+    pub fn read(data: &[u8]) -> Result<Self, SbcError> {
+        let mut bits = Bits::new(BitMode::Read, data.get(..Self::SIZE).ok_or_else(SbcError::new)?);
 
         let syncword = bits.get_bits(8);
         let msbc = syncword == 0xad;
@@ -65,7 +86,7 @@ impl SbcHeader {
                 1 => Frequency::Hz32k,
                 2 => Frequency::Hz44k,
                 3 => Frequency::Hz48k,
-                _ => return None,
+                _ => return Err(SbcError::new()),
             };
             let blocks = (1 + bits.get_bits(2)) << 2;
             let mode = match bits.get_bits(2) {
@@ -73,12 +94,12 @@ impl SbcHeader {
                 1 => ChannelMode::DualChannel,
                 2 => ChannelMode::Stereo,
                 3 => ChannelMode::JointStereo,
-                _ => return None,
+                _ => return Err(SbcError::new()),
             };
             let bam = match bits.get_bits(1) {
                 0 => Bam::Loudness,
                 1 => Bam::Snr,
-                _ => return None,
+                _ => return Err(SbcError::new()),
             };
             let subbands = (1 + bits.get_bits(1)) << 2;
             let bitpool = bits.get_bits(8);
@@ -94,11 +115,29 @@ impl SbcHeader {
                 crc: 0,
             }
         } else {
-            return None;
+            return  Err(SbcError::new());
         };
         frame.crc = bits.get_bits(8);
-        verify_header(&frame)
-            .then_some(frame)
+
+        ensure!(frame.blocks - 4 <= 12 && (frame.msbc || frame.blocks % 4 == 0));
+        ensure!(frame.subbands - 4 <= 4 && frame.subbands % 4 == 0);
+        let two_channels = u32::from(frame.mode != ChannelMode::Mono);
+        let dual_mode = u32::from(frame.mode == ChannelMode::DualChannel);
+        let joint_mode: bool = frame.mode == ChannelMode::JointStereo;
+        let stereo_mode = u32::from(joint_mode || frame.mode == ChannelMode::Stereo);
+        let max_bits =
+            ((16 * frame.subbands * frame.blocks) << two_channels)
+                - 4 * 8
+                - ((4 * frame.subbands) << two_channels)
+                - joint_mode.then_some(frame.subbands).unwrap_or_default();
+        let max_bitpool = match max_bits / (frame.blocks << dual_mode) < (16 << stereo_mode * frame.subbands) {
+            true => max_bits / (frame.blocks << dual_mode),
+            false => (16 << stereo_mode) * frame.subbands,
+        };
+        frame.bitpool <= max_bitpool;
+        ensure!(frame.bitpool <= max_bitpool);
+
+        Ok(frame)
     }
 
     pub fn frame_size(&self) -> usize {
@@ -120,25 +159,7 @@ impl SbcHeader {
 
 }
 
-fn verify_header(header: &SbcHeader) -> bool {
-    if header.blocks - 4 > 12 || !header.msbc && header.blocks % 4  != 0 {
-        return false;
-    }
-    if header.subbands - 4 > 4 || header.subbands % 4 != 0 {
-        return false;
-    }
-    let two_channels = u32::from(header.mode != ChannelMode::Mono);
-    let dual_mode = u32::from(header.mode == ChannelMode::DualChannel);
-    let joint_mode: bool = header.mode == ChannelMode::JointStereo;
-    let stereo_mode = u32::from(joint_mode || header.mode == ChannelMode::Stereo);
-    let max_bits =
-        ((16 * header.subbands * header.blocks) << two_channels)
-        - 4 * 8
-        - ((4 * header.subbands) << two_channels)
-        - joint_mode.then_some(header.subbands).unwrap_or_default();
-    let max_bitpool = match max_bits / (header.blocks << dual_mode) < (16 << stereo_mode * header.subbands) {
-        true => max_bits / (header.blocks << dual_mode),
-        false => (16 << stereo_mode) * header.subbands,
-    };
-    header.bitpool <= max_bitpool
+pub fn decode(header: SbcHeader, data: &[u8], out: &mut [i16]) -> Option<()> {
+
+    Some(())
 }
