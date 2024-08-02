@@ -177,7 +177,7 @@ unsafe extern "C" fn check_frame(frame: *const sbc_frame) -> bool {
     };
     (*frame).bitpool <= max_bitpool
 }
-unsafe extern "C" fn compute_nbits(
+pub unsafe extern "C" fn compute_nbits(
     frame: *const sbc_frame,
     scale_factors: *const [c_int; 8],
     nbits: *mut [c_int; 8],
@@ -430,7 +430,7 @@ pub unsafe extern "C" fn sbc_reset(sbc: *mut sbc) {
         }
     };
 }
-unsafe extern "C" fn decode_header(
+pub unsafe extern "C" fn decode_header(
     bits: &mut Bits,
     frame: *mut sbc_frame,
     crc: *mut c_int,
@@ -468,7 +468,7 @@ unsafe extern "C" fn decode_header(
     }
     check_frame(frame)
 }
-unsafe extern "C" fn decode_frame(
+pub unsafe extern "C" fn decode_frame(
     bits: &mut Bits,
     frame: *const sbc_frame,
     sb_samples: *mut [int16_t; 128],

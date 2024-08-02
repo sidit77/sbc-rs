@@ -1,10 +1,6 @@
-use crate::bits2::{Bits, Mode as BitMode, Mode};
-use crate::raw::{
-    int16_t, sbc_frame, sbc_get_frame_size, uint8_t, SBC_MODE_DUAL_CHANNEL, SBC_MODE_JOINT_STEREO,
-    SBC_MODE_MONO,
-};
-use std::ffi::{c_int, c_uint};
 use std::panic::Location;
+
+use crate::bits2::{Bits, Mode as BitMode, Mode};
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 #[repr(u8)]
@@ -157,7 +153,6 @@ impl SbcHeader {
                 true => max_bits / (frame.blocks << dual_mode),
                 false => (16 << stereo_mode) * frame.subbands,
             };
-        frame.bitpool <= max_bitpool;
         ensure!(frame.bitpool <= max_bitpool);
 
         Ok(frame)
@@ -188,8 +183,29 @@ pub fn decode(data: &[u8], out: &mut [i16]) -> Result<(), SbcError> {
     let mut samples = [[0i16; MAX_SAMPLES]; MAX_CHANNELS];
     let mut scale = [0i32; 2];
 
-    let mut bits = Bits::new(Mode::Read, &data[SbcHeader::SIZE..]);
+    let mut bits = Bits::new(Mode::Read, data.get(SbcHeader::SIZE..header.frame_size()).ok_or_else(SbcError::new)?);
     decode_frame(&mut bits, &header, &mut samples, &mut scale)?;
+
+    /*
+    {
+        let mut sb_samples: [[i16; 128]; 2] = [[0; 128]; 2];
+        let mut sb_scale: [i32; 2] = [0; 2];
+
+        unsafe {
+            let mut frame = std::mem::zeroed();
+            let mut bits = Bits::new(Mode::Read, &data[..SbcHeader::SIZE]);
+            assert!(crate::raw::decode_header(&mut bits, &mut frame, std::ptr::null_mut()));
+            assert!(!bits.has_error());
+            let mut bits = Bits::new(Mode::Read, &data[SbcHeader::SIZE..(crate::raw::sbc_get_frame_size(&frame) as usize)]);
+            crate::raw::decode_frame(&mut bits, &frame, sb_samples.as_mut_ptr(), sb_scale.as_mut_ptr());
+            assert!(!bits.has_error());
+        };
+
+        assert_eq!(samples, sb_samples);
+        assert_eq!(scale, sb_scale);
+    }
+    */
+
     //(*sbc)
     //    .nchannels = 1 as c_int
     //    + ((*frame).mode as c_uint
@@ -318,7 +334,7 @@ fn decode_frame(
     for iblk in 0..(header.blocks as usize) {
         for ich in 0..channels {
             let mut index = iblk * subbands;
-            for isb in 0..(subbands as usize) {
+            for isb in 0..subbands {
                 let nbit = nbits[ich][isb];
                 let scf = scale_factors[ich][isb];
 
@@ -351,8 +367,8 @@ fn decode_frame(
             let s0 = samples[0][iblk * subbands + isb];
             let s1 = samples[1][iblk * subbands + isb];
 
-            samples[0][iblk * subbands + isb + 0] = s0 + s1;
-            samples[1][iblk * subbands + isb + 1] = s0 - s1;
+            samples[0][iblk * subbands + isb] = s0 + s1;
+            samples[1][iblk * subbands + isb] = s0 - s1;
         }
     }
 
@@ -408,9 +424,9 @@ fn compute_nbits(
 
             let bitneed = match header.bam {
                 Bam::Loudness => {
-                    let bitneed = match scf {
-                        0 => -5,
-                        _ => scf - loundness_offset[isb],
+                    let bitneed = match scf == 0 {
+                        true => -5,
+                        false => scf - loundness_offset[isb],
                     };
                     bitneed >> i32::from(bitneed > 0)
                 }
@@ -429,7 +445,8 @@ fn compute_nbits(
     let mut bitcount = 0;
     let mut bitslice = max_bitneed + 1;
 
-    for mut bc in 0..bitpool {
+    let mut bc = 0;
+    while bc < bitpool {
         let bs = bitslice;
         bitslice -= 1;
         bitcount = bc;
@@ -447,31 +464,44 @@ fn compute_nbits(
     /* --- Bits distribution --- */
     for ich in 0..channels {
         for isb in 0..subbands {
+            let nbit = bitneeds[ich][isb] - bitslice;
+            nbits[ich][isb] = match nbit < 2 {
+                true => 0,
+                false => match nbit > 16 {
+                    true => 16,
+                    false => nbit,
+                },
+            };
+        }
+    }
+    /* --- Allocate remaining bits --- */
+    for isb in 0..subbands {
+        for ich in 0..channels {
             if bitcount >= bitpool {
                 break;
             }
 
             let n = match nbits[ich][isb] != 0 && nbits[ich][isb] < 16 {
                 true => 1,
-                false => match bitneeds[ich][isb] == bitslice + 1 && bitpool > bitcount {
+                false => match bitneeds[ich][isb] == bitslice + 1 && bitpool > bitcount + 1 {
                     true => 2,
                     false => 0,
                 },
             };
 
             nbits[ich][isb] += n;
-            bitcount += (n as usize);
+            bitcount += n as usize;
         }
     }
 
-    for ich in 0..channels {
-        for isb in 0..subbands {
+    for isb in 0..subbands {
+        for ich in 0..channels {
             if bitcount >= bitpool {
                 break;
             }
             let n = i32::from(nbits[ich][isb] < 16);
             nbits[ich][isb] += n;
-            bitcount += (n as usize);
+            bitcount += n as usize;
         }
     }
 }
