@@ -1,11 +1,10 @@
-use std::ffi::c_int;
 use std::panic::Location;
 
 use crate::bits2::{Bits, Mode};
 use crate::decoder::crc::compute_crc;
 use crate::decoder::frame::decode_frame;
 use crate::decoder::synthesize::synthesize;
-use crate::raw::{int16_t, sbc};
+use crate::raw::{sbc};
 
 macro_rules! ensure {
     ($cond:expr) => {
@@ -87,10 +86,10 @@ impl SbcError {
 pub fn decode(
     data: &[u8],
     sbc: *mut sbc,
-    pcml: *mut int16_t,
-    pitchl: c_int,
-    pcmr: *mut int16_t,
-    pitchr: c_int
+    pcml: *mut i16,
+    pitchl: usize,
+    pcmr: *mut i16,
+    pitchr: usize
 ) -> Result<(), SbcError> {
     let header = SbcHeader::read(data)?;
     let data = data.get(..header.frame_size()).ok_or_else(SbcError::new)?;
@@ -121,20 +120,14 @@ pub fn decode(
     }
     */
 
-    //(*sbc)
-    //    .nchannels = 1 as c_int
-    //    + ((*frame).mode as c_uint
-    //    != SBC_MODE_MONO as c_int as c_uint) as c_int;
-    //(*sbc).nblocks = (*frame).nblocks;
-    //(*sbc).nsubbands = (*frame).nsubbands;
     unsafe {
         synthesize(
             &mut *((*sbc).c2rust_unnamed.dstates)
                 .as_mut_ptr()
                 .offset(0),
-            header.blocks as c_int,
-            header.subbands as c_int,
-            samples[0].as_mut_ptr(),
+            header.blocks as usize,
+            header.subbands as usize,
+            &samples[0],
             scale[0],
             pcml,
             pitchl,
@@ -144,9 +137,9 @@ pub fn decode(
                 &mut *((*sbc).c2rust_unnamed.dstates)
                     .as_mut_ptr()
                     .offset(1),
-                header.blocks as c_int,
-                header.subbands as c_int,
-                samples[1].as_mut_ptr(),
+                header.blocks as usize,
+                header.subbands as usize,
+                &samples[1],
                 scale[1],
                 pcmr,
                 pitchr,

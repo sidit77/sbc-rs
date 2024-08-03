@@ -56,7 +56,7 @@ impl Decoder {
             remaining,
             &mut *self.sbc,
             self.buffer.as_mut_ptr(),
-            nch as i32,
+            nch as usize,
             unsafe { self.buffer.as_mut_ptr().add(1) },
             2
         ).unwrap();
