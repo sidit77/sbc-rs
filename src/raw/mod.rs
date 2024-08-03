@@ -62,7 +62,6 @@ pub union C2RustUnnamed {
     pub dstates: [sbc_dstate; 2],
     pub estates: [sbc_estate; 2],
 }
-pub type sbc_t = sbc;
 
 static msbc_frame: sbc_frame = sbc_frame {
     msbc: 1 as c_int != 0,

@@ -1,5 +1,4 @@
-use crate::decoder::{BufferView, MAX_SAMPLES};
-use crate::raw::sbc_dstate;
+use crate::decoder::{BufferView, DecoderState, MAX_SAMPLES};
 
 #[inline]
 fn sat16(v: i32) -> i16 {
@@ -223,29 +222,29 @@ type DctFn = fn(&[i16], i32, &mut [[i16; 10]; 8], &mut [[i16; 10]; 8], usize);
 fn synthesize_block<const N: usize>(
     windows: &[[i16; 20]; N],
     dct: DctFn,
-    state: &mut sbc_dstate,
+    state: &mut DecoderState,
     data: &[i16],
     scale: i32,
     out: &mut [i16],
     pitch: usize,
 ) {
     /* --- IDCT and windowing --- */
-    let dct_idx = match state.idx != 0 {
-        true => 10 - state.idx,
+    let dct_idx = match state.index != 0 {
+        true => 10 - state.index,
         false => 0
     };
     let odd = dct_idx % 2 == 1;
     let (a, b) = destructure2(&mut state.v, odd);
-    dct(data, scale, a, b, dct_idx as usize);
-    apply_window(a, windows, state.idx as usize, out, pitch);
-    state.idx = match state.idx < 9 {
-        true => state.idx + 1,
+    dct(data, scale, a, b, dct_idx);
+    apply_window(a, windows, state.index, out, pitch);
+    state.index = match state.index < 9 {
+        true => state.index + 1,
         false => 0
     };
 }
 
 pub fn synthesize(
-    state: &mut sbc_dstate,
+    state: &mut DecoderState,
     blocks: usize,
     subbands: usize,
     data: &[i16; MAX_SAMPLES],
@@ -253,7 +252,7 @@ pub fn synthesize(
     out: BufferView<'_>,
 ) {
     let BufferView { buf, pitch, offset } = out;
-    debug_assert!(buf.len() >= blocks * subbands * pitch, "len: {}, blocks: {}, subbands: {}, pitch: {}", buf.len(), blocks, subbands, pitch);
+    debug_assert!(buf.len() >= blocks * subbands * pitch);
     for (block, out) in data.chunks_exact(subbands).take(blocks).zip(buf.chunks_mut(subbands * pitch)) {
         if subbands == 4 {
             synthesize_block(&WINDOW4, dct4, state, block, scale, &mut out[offset..], pitch);

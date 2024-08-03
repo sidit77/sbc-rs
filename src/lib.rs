@@ -1,21 +1,56 @@
-use std::mem::zeroed;
-use crate::decoder::{decode, OutputFormat, SbcHeader};
-use crate::raw::{sbc_decode, sbc_get_frame_size, SBC_MODE_MONO, sbc_probe, sbc_reset, sbc_t};
+use crate::decoder::{Decoder, OutputFormat, SbcHeader};
 
 mod bits2;
 mod decoder;
 mod raw;
 
-pub const SBC_HEADER_SIZE: usize = 4;
-pub const SBC_PROBE_SIZE: usize = SBC_HEADER_SIZE;
+pub struct BufferedDecoder {
+    decoder: Box<Decoder>,
+    data: Vec<u8>,
+    index: usize,
+    buffer: Vec<i16>
+}
 
-pub const SBC_MAX_SUBBANDS: usize = 8;
-pub const SBC_MAX_BLOCKS: usize = 16;
-pub const SBC_MAX_SAMPLES: usize = SBC_MAX_BLOCKS * SBC_MAX_SUBBANDS;
+impl Default for BufferedDecoder {
+    fn default() -> Self {
+        Self {
+            decoder: Box::new(Default::default()),
+            data: Vec::new(),
+            index: 0,
+            buffer: vec![0; 2 * Decoder::MAX_SAMPLES],
+        }
+    }
+}
 
-pub const SBC_MSBC_SAMPLES: usize = 120;
-pub const SBC_MSBC_SIZE: usize = 57;
+impl BufferedDecoder {
+    pub fn refill_buffer(&mut self, data: &[u8]) {
+        let remaining = self.data.len() - self.index;
+        self.data.copy_within(self.index.., 0);
+        self.data.truncate(remaining);
+        self.index = 0;
+        self.data.extend_from_slice(data);
+    }
 
+    pub fn next_frame(&mut self) -> Option<&[i16]> {
+        let remaining = &self.data[self.index..];
+        if remaining.len() < SbcHeader::SIZE { return None; }
+
+        let header = SbcHeader::read(remaining).unwrap();
+        let frame_size = header.frame_size();
+        if remaining.len() < frame_size { return None; }
+
+        let r = self.decoder.decode(
+            remaining,
+            OutputFormat::interleaved(&mut self.buffer, header.channels() == 1)
+        ).unwrap();
+        self.index += r.bytes_read;
+
+        Some(&self.buffer[..(r.samples_written * r.channels as usize)])
+    }
+
+}
+
+/*
 pub struct Decoder {
     data: Vec<u8>,
     index: usize,
@@ -64,6 +99,8 @@ impl Decoder {
     }
 
     pub fn next_frame_lr(&mut self) -> Option<[&[i16]; 2]> {
+        pub const SBC_HEADER_SIZE: usize = 4;
+        pub const SBC_PROBE_SIZE: usize = SBC_HEADER_SIZE;
         let remaining = &self.data[self.index..];
         if remaining.len() < SBC_PROBE_SIZE { return None; }
         assert_eq!(remaining.len().min(SBC_PROBE_SIZE), SBC_PROBE_SIZE);
@@ -99,18 +136,20 @@ impl Decoder {
     }
 
 }
-
+*/
 
 #[cfg(test)]
 mod tests {
     use std::path::Path;
+
     use bytemuck::cast_slice;
     use crc32fast::Hasher;
+
     use super::*;
 
     fn run_decoder_testcase<P: AsRef<Path>>(path: P, expected_frames: u32, expected_crc32: u32) {
-        let data = std::fs::read(path).unwrap();
-        let mut decoder = Decoder::new(data);
+        let mut decoder = BufferedDecoder::default();
+        decoder.refill_buffer(&std::fs::read(path).unwrap());
         let mut hasher = Hasher::new();
         let mut count = 0;
         while let Some(frame) = decoder.next_frame() {

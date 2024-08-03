@@ -4,7 +4,6 @@ use crate::bits2::{Bits, Mode};
 use crate::decoder::crc::compute_crc;
 use crate::decoder::frame::decode_frame;
 use crate::decoder::synthesize::synthesize;
-use crate::raw::{sbc};
 
 macro_rules! ensure {
     ($cond:expr) => {
@@ -149,41 +148,65 @@ impl<'a> BufferView<'a> {
     }
 }
 
+#[derive(Default)]
+struct DecoderState {
+    index: usize,
+    pub v: [[[i16; 10]; 8]; 2]
+}
 
-pub fn decode(
-    data: &[u8],
-    sbc: &mut sbc,
-    mut output: OutputFormat<'_>
-) -> Result<(), SbcError> {
-    let header = SbcHeader::read(data)?;
-    let data = data.get(..header.frame_size()).ok_or_else(SbcError::new)?;
-    ensure!(compute_crc(&header, data)? == header.crc);
-    let mut samples = [[0i16; MAX_SAMPLES]; MAX_CHANNELS];
-    let mut scale = [0i32; MAX_CHANNELS];
+#[derive(Default)]
+pub struct Decoder {
+    state: [DecoderState; 2]
+}
 
-    let mut bits = Bits::new(Mode::Read, data.get(SbcHeader::SIZE..).ok_or_else(SbcError::new)?);
-    decode_frame(&mut bits, &header, &mut samples, &mut scale)?;
+impl Decoder {
+    pub const MAX_SAMPLES: usize = MAX_SAMPLES;
+    pub fn reset(&mut self) {
+        self.state = Default::default();
+    }
 
-    let left = output.left();
-    synthesize(
-        unsafe {&mut sbc.c2rust_unnamed.dstates[0]},
-        header.blocks as usize,
-        header.subbands as usize,
-        &samples[0],
-        scale[0],
-        left,
-    );
-    if header.mode != ChannelMode::Mono {
-        let right = output.right();
+    pub fn decode(&mut self, data: &[u8], mut output: OutputFormat<'_>) -> Result<DecodeStatus, SbcError> {
+        let header = SbcHeader::read(data)?;
+        let frame_size = header.frame_size();
+        let data = data.get(..frame_size).ok_or_else(SbcError::new)?;
+        ensure!(compute_crc(&header, data)? == header.crc);
+        let mut samples = [[0i16; MAX_SAMPLES]; MAX_CHANNELS];
+        let mut scale = [0i32; MAX_CHANNELS];
+
+        let mut bits = Bits::new(Mode::Read, data.get(SbcHeader::SIZE..).ok_or_else(SbcError::new)?);
+        decode_frame(&mut bits, &header, &mut samples, &mut scale)?;
+
+        let left = output.left();
         synthesize(
-            unsafe {&mut sbc.c2rust_unnamed.dstates[1]},
+            &mut self.state[0],
             header.blocks as usize,
             header.subbands as usize,
-            &samples[1],
-            scale[1],
-            right
+            &samples[0],
+            scale[0],
+            left,
         );
+        if header.mode != ChannelMode::Mono {
+            let right = output.right();
+            synthesize(
+                &mut self.state[1],
+                header.blocks as usize,
+                header.subbands as usize,
+                &samples[1],
+                scale[1],
+                right
+            );
+        }
+        Ok(DecodeStatus {
+            bytes_read: frame_size,
+            samples_written: header.blocks as usize * header.subbands as usize,
+            channels: header.channels()
+        })
     }
-    Ok(())
+}
+
+pub struct DecodeStatus {
+    pub bytes_read: usize,
+    pub samples_written: usize,
+    pub channels: u32
 }
 
