@@ -1,5 +1,5 @@
 use std::mem::zeroed;
-use crate::decoder::{decode, SbcHeader};
+use crate::decoder::{decode, OutputFormat, SbcHeader};
 use crate::raw::{sbc_decode, sbc_get_frame_size, SBC_MODE_MONO, sbc_probe, sbc_reset, sbc_t};
 
 mod bits2;
@@ -54,11 +54,8 @@ impl Decoder {
 
         decode(
             remaining,
-            &mut *self.sbc,
-            self.buffer.as_mut_ptr(),
-            nch as usize,
-            unsafe { self.buffer.as_mut_ptr().add(1) },
-            2
+            &mut self.sbc,
+            OutputFormat::interleaved(&mut self.buffer, header.channels() == 1)
         ).unwrap();
         self.index += frame_size;
 

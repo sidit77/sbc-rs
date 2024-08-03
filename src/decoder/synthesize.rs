@@ -1,6 +1,5 @@
-use crate::raw::{int16_t, sbc_dstate};
-use std::ffi::c_int;
-use std::slice;
+use crate::decoder::{BufferView, MAX_SAMPLES};
+use crate::raw::sbc_dstate;
 
 #[inline]
 fn sat16(v: i32) -> i16 {
@@ -146,17 +145,14 @@ fn apply_window<const N: usize>(
     data: &[[i16; 10]; 8],
     window: &[[i16; 20]; N],
     offset: usize,
-    mut out: *mut i16,
+    out: &mut [i16],
     pitch: usize,
 ) {
     debug_assert!(data.len() >= window.len());
-    for (w, u) in window.iter().zip(data) {
+    for (i, (w, u)) in window.iter().zip(data).enumerate() {
         debug_assert!(w.len() - offset >= u.len());
         let s = w.iter().skip(offset).zip(u).map(widened_mul).sum::<i32>();
-        unsafe {
-            *out = sat16((s + (1 << 12)) >> 13);
-            out = out.offset(pitch as isize);
-        }
+        out[i * pitch] = sat16((s + (1 << 12)) >> 13);
     }
 }
 
@@ -230,7 +226,7 @@ fn synthesize_block<const N: usize>(
     state: &mut sbc_dstate,
     data: &[i16],
     scale: i32,
-    out: *mut i16,
+    out: &mut [i16],
     pitch: usize,
 ) {
     /* --- IDCT and windowing --- */
@@ -241,28 +237,28 @@ fn synthesize_block<const N: usize>(
     let odd = dct_idx % 2 == 1;
     let (a, b) = destructure2(&mut state.v, odd);
     dct(data, scale, a, b, dct_idx as usize);
-    apply_window(a, windows, state.idx as usize, out, pitch as usize);
+    apply_window(a, windows, state.idx as usize, out, pitch);
     state.idx = match state.idx < 9 {
         true => state.idx + 1,
         false => 0
     };
 }
 
-pub unsafe fn synthesize(
-    state: *mut sbc_dstate,
+pub fn synthesize(
+    state: &mut sbc_dstate,
     blocks: usize,
     subbands: usize,
-    data: &[i16],
+    data: &[i16; MAX_SAMPLES],
     scale: i32,
-    mut out: *mut int16_t,
-    pitch: usize,
+    out: BufferView<'_>,
 ) {
-    for block in data.chunks_exact(subbands).take(blocks) {
+    let BufferView { buf, pitch, offset } = out;
+    debug_assert!(buf.len() >= blocks * subbands * pitch, "len: {}, blocks: {}, subbands: {}, pitch: {}", buf.len(), blocks, subbands, pitch);
+    for (block, out) in data.chunks_exact(subbands).take(blocks).zip(buf.chunks_mut(subbands * pitch)) {
         if subbands == 4 {
-            synthesize_block(&WINDOW4, dct4, &mut *state, block, scale, out, pitch);
+            synthesize_block(&WINDOW4, dct4, state, block, scale, &mut out[offset..], pitch);
         } else {
-            synthesize_block(&WINDOW8, dct8, &mut *state, block, scale, out, pitch);
+            synthesize_block(&WINDOW8, dct8, state, block, scale, &mut out[offset..], pitch);
         }
-        out = out.offset((subbands * pitch) as isize);
     }
 }

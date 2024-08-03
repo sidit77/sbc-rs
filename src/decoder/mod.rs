@@ -83,13 +83,77 @@ impl SbcError {
     }
 }
 
+#[derive(Debug)]
+pub enum OutputFormat<'a> {
+    Mono(&'a mut [i16]),
+    Interleaved(&'a mut [i16]),
+    Planar(&'a mut [i16], &'a mut [i16]),
+}
+
+impl<'a> OutputFormat<'a> {
+
+    pub fn interleaved(buf: &'a mut[i16], mono: bool) -> Self {
+        match mono {
+            true => OutputFormat::Mono(buf),
+            false => OutputFormat::Interleaved(buf)
+        }
+    }
+
+    fn left(&mut self) -> BufferView<'_> {
+        match self {
+            OutputFormat::Mono(buf) => BufferView {
+                buf: *buf,
+                pitch: 1,
+                offset: 0,
+            },
+            OutputFormat::Interleaved(buf) => BufferView {
+                buf: *buf,
+                pitch: 2,
+                offset: 0,
+            },
+            OutputFormat::Planar(l, _) => BufferView {
+                buf: *l,
+                pitch: 1,
+                offset: 0,
+            },
+        }
+    }
+
+    fn right(&mut self) -> BufferView<'_> {
+        match self {
+            OutputFormat::Interleaved(buf) => BufferView {
+                buf: *buf,
+                pitch: 2,
+                offset: 1,
+            },
+            OutputFormat::Planar(_, r) => BufferView {
+                buf: *r,
+                pitch: 1,
+                offset: 0,
+            },
+            OutputFormat::Mono(_) => unreachable!()
+        }
+    }
+
+}
+
+struct BufferView<'a> {
+    buf: &'a mut [i16],
+    pitch: usize,
+    offset: usize
+}
+
+impl<'a> BufferView<'a> {
+    pub fn len(&self) -> usize {
+        self.buf.len() / self.pitch
+    }
+}
+
+
 pub fn decode(
     data: &[u8],
-    sbc: *mut sbc,
-    pcml: *mut i16,
-    pitchl: usize,
-    pcmr: *mut i16,
-    pitchr: usize
+    sbc: &mut sbc,
+    mut output: OutputFormat<'_>
 ) -> Result<(), SbcError> {
     let header = SbcHeader::read(data)?;
     let data = data.get(..header.frame_size()).ok_or_else(SbcError::new)?;
@@ -100,79 +164,26 @@ pub fn decode(
     let mut bits = Bits::new(Mode::Read, data.get(SbcHeader::SIZE..).ok_or_else(SbcError::new)?);
     decode_frame(&mut bits, &header, &mut samples, &mut scale)?;
 
-    /*
-    {
-        let mut sb_samples: [[i16; 128]; 2] = [[0; 128]; 2];
-        let mut sb_scale: [i32; 2] = [0; 2];
-
-        unsafe {
-            let mut frame = std::mem::zeroed();
-            let mut bits = Bits::new(Mode::Read, &data[..SbcHeader::SIZE]);
-            assert!(crate::raw::decode_header(&mut bits, &mut frame, std::ptr::null_mut()));
-            assert!(!bits.has_error());
-            let mut bits = Bits::new(Mode::Read, &data[SbcHeader::SIZE..(crate::raw::sbc_get_frame_size(&frame) as usize)]);
-            crate::raw::decode_frame(&mut bits, &frame, sb_samples.as_mut_ptr(), sb_scale.as_mut_ptr());
-            assert!(!bits.has_error());
-        };
-
-        assert_eq!(samples, sb_samples);
-        assert_eq!(scale, sb_scale);
-    }
-    */
-
-    unsafe {
+    let left = output.left();
+    synthesize(
+        unsafe {&mut sbc.c2rust_unnamed.dstates[0]},
+        header.blocks as usize,
+        header.subbands as usize,
+        &samples[0],
+        scale[0],
+        left,
+    );
+    if header.mode != ChannelMode::Mono {
+        let right = output.right();
         synthesize(
-            &mut *((*sbc).c2rust_unnamed.dstates)
-                .as_mut_ptr()
-                .offset(0),
+            unsafe {&mut sbc.c2rust_unnamed.dstates[1]},
             header.blocks as usize,
             header.subbands as usize,
-            &samples[0],
-            scale[0],
-            pcml,
-            pitchl,
-        );
-        if header.mode != ChannelMode::Mono {
-            synthesize(
-                &mut *((*sbc).c2rust_unnamed.dstates)
-                    .as_mut_ptr()
-                    .offset(1),
-                header.blocks as usize,
-                header.subbands as usize,
-                &samples[1],
-                scale[1],
-                pcmr,
-                pitchr,
-            );
-        }
-    }
-    /*
-    crate::raw::synthesize(
-        &mut *((*sbc).c2rust_unnamed.dstates)
-            .as_mut_ptr()
-            .offset(0 as c_int as isize),
-        (*sbc).nblocks,
-        (*sbc).nsubbands,
-        (sb_samples[0 as c_int as usize]).as_mut_ptr(),
-        sb_scale[0 as c_int as usize],
-        pcml,
-        pitchl,
-    );
-    if (*frame).mode as c_uint != SBC_MODE_MONO as c_int as c_uint {
-        crate::raw::synthesize(
-            &mut *((*sbc).c2rust_unnamed.dstates)
-                .as_mut_ptr()
-                .offset(1 as c_int as isize),
-            (*sbc).nblocks,
-            (*sbc).nsubbands,
-            (sb_samples[1 as c_int as usize]).as_mut_ptr(),
-            sb_scale[1 as c_int as usize],
-            pcmr,
-            pitchr,
+            &samples[1],
+            scale[1],
+            right
         );
     }
-
-     */
     Ok(())
 }
 
