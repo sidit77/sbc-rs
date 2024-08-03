@@ -1,6 +1,7 @@
-use std::ffi::c_int;
-use std::slice;
 use crate::raw::{int16_t, sbc_dstate};
+use std::ffi::c_int;
+use std::mem::swap;
+use std::slice;
 
 #[inline]
 fn sat16(v: i32) -> i16 {
@@ -8,7 +9,13 @@ fn sat16(v: i32) -> i16 {
 }
 
 #[inline]
-fn dct4(data: &[i16], scale: i32, out0: &mut [[i16; 10]; 8], out1: &mut [[i16; 10]; 8], idx: usize) {
+fn dct4(
+    data: &[i16],
+    scale: i32,
+    out0: &mut [[i16; 10]; 8],
+    out1: &mut [[i16; 10]; 8],
+    idx: usize,
+) {
     /* cos(i*pi/8)  for i = [0;3], in fixed 0.13 */
     const COS8: [i32; 4] = [8192, 7568, 5793, 3135];
 
@@ -33,28 +40,27 @@ fn dct4(data: &[i16], scale: i32, out0: &mut [[i16; 10]; 8], out1: &mut [[i16; 1
     let s12 = (data[1] as i32 + data[2] as i32) >> 1;
     let d12 = (data[1] as i32 - data[2] as i32) >> 1;
 
-    let mut a0 = (s03 - s12 ) * COS8[2];
-    let mut b1 = (-(s03 + s12 )) << 13;
-    let mut a1 =  d03 * COS8[3] - d12 * COS8[1];
+    let mut a0 = (s03 - s12) * COS8[2];
+    let mut b1 = (-(s03 + s12)) << 13;
+    let mut a1 = d03 * COS8[3] - d12 * COS8[1];
     let mut b0 = -d03 * COS8[1] - d12 * COS8[3];
 
     let shr = 12 + scale;
 
-    a0 = (a0 + (1 << (shr-1))) >> shr;
-    b0 = (b0 + (1 << (shr-1))) >> shr;
-    a1 = (a1 + (1 << (shr-1))) >> shr;
-    b1 = (b1 + (1 << (shr-1))) >> shr;
+    a0 = (a0 + (1 << (shr - 1))) >> shr;
+    b0 = (b0 + (1 << (shr - 1))) >> shr;
+    a1 = (a1 + (1 << (shr - 1))) >> shr;
+    b1 = (b1 + (1 << (shr - 1))) >> shr;
 
-    out0[0][idx] = sat16( a0);
-    out0[1][idx] = sat16( a1);
-    out0[2][idx] = sat16(  0);
+    out0[0][idx] = sat16(a0);
+    out0[1][idx] = sat16(a1);
+    out0[2][idx] = sat16(0);
     out0[3][idx] = sat16(-a1);
 
     out1[0][idx] = sat16(-a0);
-    out1[1][idx] = sat16( b0);
-    out1[2][idx] = sat16( b1);
-    out1[3][idx] = sat16( b0);
-
+    out1[1][idx] = sat16(b0);
+    out1[2][idx] = sat16(b1);
+    out1[3][idx] = sat16(b0);
 }
 
 #[inline]
@@ -76,59 +82,50 @@ unsafe fn dct8(
         1598 as c_int as int16_t,
     ];
     let s07: int16_t = ((*in_0.offset(0 as c_int as isize) as c_int
-        + *in_0.offset(7 as c_int as isize) as c_int) >> 1 as c_int)
-        as int16_t;
+        + *in_0.offset(7 as c_int as isize) as c_int)
+        >> 1 as c_int) as int16_t;
     let d07: int16_t = ((*in_0.offset(0 as c_int as isize) as c_int
-        - *in_0.offset(7 as c_int as isize) as c_int) >> 1 as c_int)
-        as int16_t;
+        - *in_0.offset(7 as c_int as isize) as c_int)
+        >> 1 as c_int) as int16_t;
     let s16: int16_t = ((*in_0.offset(1 as c_int as isize) as c_int
-        + *in_0.offset(6 as c_int as isize) as c_int) >> 1 as c_int)
-        as int16_t;
+        + *in_0.offset(6 as c_int as isize) as c_int)
+        >> 1 as c_int) as int16_t;
     let d16: int16_t = ((*in_0.offset(1 as c_int as isize) as c_int
-        - *in_0.offset(6 as c_int as isize) as c_int) >> 1 as c_int)
-        as int16_t;
+        - *in_0.offset(6 as c_int as isize) as c_int)
+        >> 1 as c_int) as int16_t;
     let s25: int16_t = ((*in_0.offset(2 as c_int as isize) as c_int
-        + *in_0.offset(5 as c_int as isize) as c_int) >> 1 as c_int)
-        as int16_t;
+        + *in_0.offset(5 as c_int as isize) as c_int)
+        >> 1 as c_int) as int16_t;
     let d25: int16_t = ((*in_0.offset(2 as c_int as isize) as c_int
-        - *in_0.offset(5 as c_int as isize) as c_int) >> 1 as c_int)
-        as int16_t;
+        - *in_0.offset(5 as c_int as isize) as c_int)
+        >> 1 as c_int) as int16_t;
     let s34: int16_t = ((*in_0.offset(3 as c_int as isize) as c_int
-        + *in_0.offset(4 as c_int as isize) as c_int) >> 1 as c_int)
-        as int16_t;
+        + *in_0.offset(4 as c_int as isize) as c_int)
+        >> 1 as c_int) as int16_t;
     let d34: int16_t = ((*in_0.offset(3 as c_int as isize) as c_int
-        - *in_0.offset(4 as c_int as isize) as c_int) >> 1 as c_int)
-        as int16_t;
-    let mut a0: c_int = (s07 as c_int + s34 as c_int
-        - (s25 as c_int + s16 as c_int))
+        - *in_0.offset(4 as c_int as isize) as c_int)
+        >> 1 as c_int) as int16_t;
+    let mut a0: c_int = (s07 as c_int + s34 as c_int - (s25 as c_int + s16 as c_int))
         * cos16[4 as c_int as usize] as c_int;
-    let mut b3: c_int = (-(s07 as c_int + s34 as c_int)
-        - (s25 as c_int + s16 as c_int)) << 13 as c_int;
-    let mut a2: c_int = (s07 as c_int - s34 as c_int)
-        * cos16[6 as c_int as usize] as c_int
-        + (s25 as c_int - s16 as c_int)
-        * cos16[2 as c_int as usize] as c_int;
-    let mut b1: c_int = (s34 as c_int - s07 as c_int)
-        * cos16[2 as c_int as usize] as c_int
-        + (s25 as c_int - s16 as c_int)
-        * cos16[6 as c_int as usize] as c_int;
-    let mut a1: c_int = d07 as c_int
-        * cos16[5 as c_int as usize] as c_int
+    let mut b3: c_int =
+        (-(s07 as c_int + s34 as c_int) - (s25 as c_int + s16 as c_int)) << 13 as c_int;
+    let mut a2: c_int = (s07 as c_int - s34 as c_int) * cos16[6 as c_int as usize] as c_int
+        + (s25 as c_int - s16 as c_int) * cos16[2 as c_int as usize] as c_int;
+    let mut b1: c_int = (s34 as c_int - s07 as c_int) * cos16[2 as c_int as usize] as c_int
+        + (s25 as c_int - s16 as c_int) * cos16[6 as c_int as usize] as c_int;
+    let mut a1: c_int = d07 as c_int * cos16[5 as c_int as usize] as c_int
         - d16 as c_int * cos16[1 as c_int as usize] as c_int
         + d25 as c_int * cos16[7 as c_int as usize] as c_int
         + d34 as c_int * cos16[3 as c_int as usize] as c_int;
-    let mut b2: c_int = -(d07 as c_int)
-        * cos16[1 as c_int as usize] as c_int
+    let mut b2: c_int = -(d07 as c_int) * cos16[1 as c_int as usize] as c_int
         - d16 as c_int * cos16[3 as c_int as usize] as c_int
         - d25 as c_int * cos16[5 as c_int as usize] as c_int
         - d34 as c_int * cos16[7 as c_int as usize] as c_int;
-    let mut a3: c_int = d07 as c_int
-        * cos16[7 as c_int as usize] as c_int
+    let mut a3: c_int = d07 as c_int * cos16[7 as c_int as usize] as c_int
         - d16 as c_int * cos16[5 as c_int as usize] as c_int
         + d25 as c_int * cos16[3 as c_int as usize] as c_int
         - d34 as c_int * cos16[1 as c_int as usize] as c_int;
-    let mut b0: c_int = -(d07 as c_int)
-        * cos16[3 as c_int as usize] as c_int
+    let mut b0: c_int = -(d07 as c_int) * cos16[3 as c_int as usize] as c_int
         + d16 as c_int * cos16[7 as c_int as usize] as c_int
         + d25 as c_int * cos16[1 as c_int as usize] as c_int
         + d34 as c_int * cos16[5 as c_int as usize] as c_int;
@@ -141,176 +138,112 @@ unsafe fn dct8(
     b2 = (b2 + ((1 as c_int) << (shr - 1 as c_int))) >> shr;
     a3 = (a3 + ((1 as c_int) << (shr - 1 as c_int))) >> shr;
     b3 = (b3 + ((1 as c_int) << (shr - 1 as c_int))) >> shr;
-    (*out0
-        .offset(
-            0 as c_int as isize,
-        ))[idx
-        as usize] = (if a0 > 32767 as c_int {
+    (*out0.offset(0 as c_int as isize))[idx as usize] = (if a0 > 32767 as c_int {
         32767 as c_int
     } else if a0 < -(32767 as c_int) - 1 as c_int {
         -(32767 as c_int) - 1 as c_int
     } else {
         a0
     }) as int16_t;
-    (*out0
-        .offset(
-            7 as c_int as isize,
-        ))[idx
-        as usize] = (if -a1 > 32767 as c_int {
+    (*out0.offset(7 as c_int as isize))[idx as usize] = (if -a1 > 32767 as c_int {
         32767 as c_int
     } else if -a1 < -(32767 as c_int) - 1 as c_int {
         -(32767 as c_int) - 1 as c_int
     } else {
         -a1
     }) as int16_t;
-    (*out0
-        .offset(
-            1 as c_int as isize,
-        ))[idx
-        as usize] = (if a1 > 32767 as c_int {
+    (*out0.offset(1 as c_int as isize))[idx as usize] = (if a1 > 32767 as c_int {
         32767 as c_int
     } else if a1 < -(32767 as c_int) - 1 as c_int {
         -(32767 as c_int) - 1 as c_int
     } else {
         a1
     }) as int16_t;
-    (*out0
-        .offset(
-            6 as c_int as isize,
-        ))[idx
-        as usize] = (if -a2 > 32767 as c_int {
+    (*out0.offset(6 as c_int as isize))[idx as usize] = (if -a2 > 32767 as c_int {
         32767 as c_int
     } else if -a2 < -(32767 as c_int) - 1 as c_int {
         -(32767 as c_int) - 1 as c_int
     } else {
         -a2
     }) as int16_t;
-    (*out0
-        .offset(
-            2 as c_int as isize,
-        ))[idx
-        as usize] = (if a2 > 32767 as c_int {
+    (*out0.offset(2 as c_int as isize))[idx as usize] = (if a2 > 32767 as c_int {
         32767 as c_int
     } else if a2 < -(32767 as c_int) - 1 as c_int {
         -(32767 as c_int) - 1 as c_int
     } else {
         a2
     }) as int16_t;
-    (*out0
-        .offset(
-            5 as c_int as isize,
-        ))[idx
-        as usize] = (if -a3 > 32767 as c_int {
+    (*out0.offset(5 as c_int as isize))[idx as usize] = (if -a3 > 32767 as c_int {
         32767 as c_int
     } else if -a3 < -(32767 as c_int) - 1 as c_int {
         -(32767 as c_int) - 1 as c_int
     } else {
         -a3
     }) as int16_t;
-    (*out0
-        .offset(
-            3 as c_int as isize,
-        ))[idx
-        as usize] = (if a3 > 32767 as c_int {
+    (*out0.offset(3 as c_int as isize))[idx as usize] = (if a3 > 32767 as c_int {
         32767 as c_int
     } else if a3 < -(32767 as c_int) - 1 as c_int {
         -(32767 as c_int) - 1 as c_int
     } else {
         a3
     }) as int16_t;
-    (*out0
-        .offset(
-            4 as c_int as isize,
-        ))[idx
-        as usize] = (if 0 as c_int > 32767 as c_int {
+    (*out0.offset(4 as c_int as isize))[idx as usize] = (if 0 as c_int > 32767 as c_int {
         32767 as c_int
     } else if (0 as c_int) < -(32767 as c_int) - 1 as c_int {
         -(32767 as c_int) - 1 as c_int
     } else {
         0 as c_int
     }) as int16_t;
-    (*out1
-        .offset(
-            0 as c_int as isize,
-        ))[idx
-        as usize] = (if -a0 > 32767 as c_int {
+    (*out1.offset(0 as c_int as isize))[idx as usize] = (if -a0 > 32767 as c_int {
         32767 as c_int
     } else if -a0 < -(32767 as c_int) - 1 as c_int {
         -(32767 as c_int) - 1 as c_int
     } else {
         -a0
     }) as int16_t;
-    (*out1
-        .offset(
-            7 as c_int as isize,
-        ))[idx
-        as usize] = (if b0 > 32767 as c_int {
+    (*out1.offset(7 as c_int as isize))[idx as usize] = (if b0 > 32767 as c_int {
         32767 as c_int
     } else if b0 < -(32767 as c_int) - 1 as c_int {
         -(32767 as c_int) - 1 as c_int
     } else {
         b0
     }) as int16_t;
-    (*out1
-        .offset(
-            1 as c_int as isize,
-        ))[idx
-        as usize] = (if b0 > 32767 as c_int {
+    (*out1.offset(1 as c_int as isize))[idx as usize] = (if b0 > 32767 as c_int {
         32767 as c_int
     } else if b0 < -(32767 as c_int) - 1 as c_int {
         -(32767 as c_int) - 1 as c_int
     } else {
         b0
     }) as int16_t;
-    (*out1
-        .offset(
-            6 as c_int as isize,
-        ))[idx
-        as usize] = (if b1 > 32767 as c_int {
+    (*out1.offset(6 as c_int as isize))[idx as usize] = (if b1 > 32767 as c_int {
         32767 as c_int
     } else if b1 < -(32767 as c_int) - 1 as c_int {
         -(32767 as c_int) - 1 as c_int
     } else {
         b1
     }) as int16_t;
-    (*out1
-        .offset(
-            2 as c_int as isize,
-        ))[idx
-        as usize] = (if b1 > 32767 as c_int {
+    (*out1.offset(2 as c_int as isize))[idx as usize] = (if b1 > 32767 as c_int {
         32767 as c_int
     } else if b1 < -(32767 as c_int) - 1 as c_int {
         -(32767 as c_int) - 1 as c_int
     } else {
         b1
     }) as int16_t;
-    (*out1
-        .offset(
-            5 as c_int as isize,
-        ))[idx
-        as usize] = (if b2 > 32767 as c_int {
+    (*out1.offset(5 as c_int as isize))[idx as usize] = (if b2 > 32767 as c_int {
         32767 as c_int
     } else if b2 < -(32767 as c_int) - 1 as c_int {
         -(32767 as c_int) - 1 as c_int
     } else {
         b2
     }) as int16_t;
-    (*out1
-        .offset(
-            3 as c_int as isize,
-        ))[idx
-        as usize] = (if b2 > 32767 as c_int {
+    (*out1.offset(3 as c_int as isize))[idx as usize] = (if b2 > 32767 as c_int {
         32767 as c_int
     } else if b2 < -(32767 as c_int) - 1 as c_int {
         -(32767 as c_int) - 1 as c_int
     } else {
         b2
     }) as int16_t;
-    (*out1
-        .offset(
-            4 as c_int as isize,
-        ))[idx
-        as usize] = (if b3 > 32767 as c_int {
+    (*out1.offset(4 as c_int as isize))[idx as usize] = (if b3 > 32767 as c_int {
         32767 as c_int
     } else if b3 < -(32767 as c_int) - 1 as c_int {
         -(32767 as c_int) - 1 as c_int
@@ -318,8 +251,33 @@ unsafe fn dct8(
         b3
     }) as int16_t;
 }
+
 #[inline]
-unsafe fn apply_window(
+fn widened_mul((a, b): (&i16, &i16)) -> i32 {
+    (*a as i32) * (*b as i32)
+}
+
+#[inline]
+fn apply_window(
+    data: &[[i16; 10]; 8],
+    window: &[[i16; 20]],
+    offset: usize,
+    mut out: *mut i16,
+    pitch: usize,
+) {
+    debug_assert!(data.len() >= window.len());
+    for (w, u) in window.iter().zip(data) {
+        debug_assert!(w.len() - offset >= u.len());
+        let s = w.iter().skip(offset).zip(u).map(widened_mul).sum::<i32>();
+        unsafe {
+            *out = sat16((s + (1 << 12)) >> 13);
+            out = out.offset(pitch as isize);
+        }
+    }
+}
+
+#[inline]
+unsafe fn apply_window_old(
     in_0: *const [int16_t; 10],
     n: c_int,
     window: *const [int16_t; 20],
@@ -383,9 +341,7 @@ unsafe fn apply_window(
         u = u.offset(1);
         let fresh23 = w;
         s += *fresh22 as c_int * *fresh23 as c_int;
-        *out = (if (s + ((1 as c_int) << 12 as c_int)) >> 13 as c_int
-            > 32767 as c_int
-        {
+        *out = (if (s + ((1 as c_int) << 12 as c_int)) >> 13 as c_int > 32767 as c_int {
             32767 as c_int
         } else if ((s + ((1 as c_int) << 12 as c_int)) >> 13 as c_int)
             < -(32767 as c_int) - 1 as c_int
@@ -398,128 +354,60 @@ unsafe fn apply_window(
         i += 1;
     }
 }
+
+#[inline]
+fn destructure2<T>(v: &mut[T; 2], swap: bool) -> (&mut T, &mut T) {
+    let [a, b] = v;
+    match swap {
+        true => (b, a),
+        false => (a, b)
+    }
+}
+
 unsafe fn sbc_synthesize_4_c(
-    state: *mut sbc_dstate,
+    state: &mut sbc_dstate,
     in_0: *const int16_t,
     scale: c_int,
     out: *mut int16_t,
     pitch: c_int,
 ) {
-    static mut window: [[int16_t; 20]; 4] = [
+    /* --- Windowing coefficients (fixed 2.13) ---
+     *
+     * The table is duplicated and transposed to fit the circular
+     * buffer of reconstructed samples */
+
+    #[rustfmt::skip]
+    const WINDOW: [[i16; 20]; 4] = [
         [
-            0 as c_int as int16_t,
-            -(126 as c_int) as int16_t,
-            -(358 as c_int) as int16_t,
-            -(848 as c_int) as int16_t,
-            -(4443 as c_int) as int16_t,
-            -(9644 as c_int) as int16_t,
-            4443 as c_int as int16_t,
-            -(848 as c_int) as int16_t,
-            358 as c_int as int16_t,
-            -(126 as c_int) as int16_t,
-            0 as c_int as int16_t,
-            -(126 as c_int) as int16_t,
-            -(358 as c_int) as int16_t,
-            -(848 as c_int) as int16_t,
-            -(4443 as c_int) as int16_t,
-            -(9644 as c_int) as int16_t,
-            4443 as c_int as int16_t,
-            -(848 as c_int) as int16_t,
-            358 as c_int as int16_t,
-            -(126 as c_int) as int16_t,
+            0, -126, -358, -848, -4443, -9644, 4443, -848, 358, -126,
+            0, -126, -358, -848, -4443, -9644, 4443, -848, 358, -126,
         ],
         [
-            -(18 as c_int) as int16_t,
-            -(128 as c_int) as int16_t,
-            -(670 as c_int) as int16_t,
-            -(201 as c_int) as int16_t,
-            -(6389 as c_int) as int16_t,
-            -(9235 as c_int) as int16_t,
-            2544 as c_int as int16_t,
-            -(1055 as c_int) as int16_t,
-            100 as c_int as int16_t,
-            -(90 as c_int) as int16_t,
-            -(18 as c_int) as int16_t,
-            -(128 as c_int) as int16_t,
-            -(670 as c_int) as int16_t,
-            -(201 as c_int) as int16_t,
-            -(6389 as c_int) as int16_t,
-            -(9235 as c_int) as int16_t,
-            2544 as c_int as int16_t,
-            -(1055 as c_int) as int16_t,
-            100 as c_int as int16_t,
-            -(90 as c_int) as int16_t,
+            -18, -128, -670, -201, -6389, -9235, 2544, -1055, 100, -90,
+            -18, -128, -670, -201, -6389, -9235, 2544, -1055, 100, -90,
         ],
         [
-            -(49 as c_int) as int16_t,
-            -(61 as c_int) as int16_t,
-            -(946 as c_int) as int16_t,
-            944 as c_int as int16_t,
-            -(8082 as c_int) as int16_t,
-            -(8082 as c_int) as int16_t,
-            944 as c_int as int16_t,
-            -(946 as c_int) as int16_t,
-            -(61 as c_int) as int16_t,
-            -(49 as c_int) as int16_t,
-            -(49 as c_int) as int16_t,
-            -(61 as c_int) as int16_t,
-            -(946 as c_int) as int16_t,
-            944 as c_int as int16_t,
-            -(8082 as c_int) as int16_t,
-            -(8082 as c_int) as int16_t,
-            944 as c_int as int16_t,
-            -(946 as c_int) as int16_t,
-            -(61 as c_int) as int16_t,
-            -(49 as c_int) as int16_t,
+            -49, -61, -946, 944, -8082, -8082, 944, -946, -61, -49,
+            -49, -61, -946, 944, -8082, -8082, 944, -946, -61, -49,
         ],
         [
-            -(90 as c_int) as int16_t,
-            100 as c_int as int16_t,
-            -(1055 as c_int) as int16_t,
-            2544 as c_int as int16_t,
-            -(9235 as c_int) as int16_t,
-            -(6389 as c_int) as int16_t,
-            -(201 as c_int) as int16_t,
-            -(670 as c_int) as int16_t,
-            -(128 as c_int) as int16_t,
-            -(18 as c_int) as int16_t,
-            -(90 as c_int) as int16_t,
-            100 as c_int as int16_t,
-            -(1055 as c_int) as int16_t,
-            2544 as c_int as int16_t,
-            -(9235 as c_int) as int16_t,
-            -(6389 as c_int) as int16_t,
-            -(201 as c_int) as int16_t,
-            -(670 as c_int) as int16_t,
-            -(128 as c_int) as int16_t,
-            -(18 as c_int) as int16_t,
+            -90, 100, -1055, 2544, -9235, -6389, -201, -670, -128, -18,
+            -90, 100, -1055, 2544, -9235, -6389, -201, -670, -128, -18,
         ],
     ];
-    let dct_idx: c_int = if (*state).idx != 0 {
-        10 as c_int - (*state).idx
-    } else {
-        0 as c_int
+
+    /* --- IDCT and windowing --- */
+    let dct_idx = match state.idx != 0 {
+        true => 10 - state.idx,
+        false => 0
     };
-    let odd: c_int = dct_idx & 1 as c_int;
-    dct4(
-        slice::from_raw_parts(in_0, 4),
-        scale,
-        &mut (*state).v[odd as usize],
-        &mut (*state).v[(odd == 0) as usize],
-        dct_idx as usize);
-    apply_window(
-        ((*state).v[odd as usize]).as_mut_ptr() as *const [int16_t; 10],
-        4 as c_int,
-        window.as_ptr(),
-        (*state).idx,
-        out,
-        pitch,
-    );
-    (*state)
-        .idx = if (*state).idx < 9 as c_int {
-        (*state).idx + 1 as c_int
-    } else {
-        0 as c_int
+    let odd = dct_idx % 2 == 1;
+    let (a, b) = destructure2(&mut state.v, odd);
+    dct4(slice::from_raw_parts(in_0, 4), scale, a, b, dct_idx as usize);
+    apply_window(a, &WINDOW, (*state).idx as usize, out, pitch as usize);
+    state.idx = match state.idx < 9 {
+        true => state.idx + 1,
+        false => 0
     };
 }
 unsafe fn sbc_synthesize_8_c(
@@ -720,7 +608,7 @@ unsafe fn sbc_synthesize_8_c(
         ((*state).v[(odd == 0) as c_int as usize]).as_mut_ptr(),
         dct_idx,
     );
-    apply_window(
+    apply_window_old(
         ((*state).v[odd as usize]).as_mut_ptr() as *const [int16_t; 10],
         8 as c_int,
         window.as_ptr(),
@@ -728,8 +616,7 @@ unsafe fn sbc_synthesize_8_c(
         out,
         pitch,
     );
-    (*state)
-        .idx = if (*state).idx < 9 as c_int {
+    (*state).idx = if (*state).idx < 9 as c_int {
         (*state).idx + 1 as c_int
     } else {
         0 as c_int
@@ -747,7 +634,7 @@ pub unsafe fn synthesize(
     let mut iblk: c_int = 0 as c_int;
     while iblk < nblocks {
         if nsubbands == 4 as c_int {
-            sbc_synthesize_4_c(state, in_0, scale, out, pitch);
+            sbc_synthesize_4_c(&mut *state, in_0, scale, out, pitch);
         } else {
             sbc_synthesize_8_c(state, in_0, scale, out, pitch);
         }
