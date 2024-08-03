@@ -32,14 +32,35 @@ impl BufferedDecoder {
     }
 
     pub fn next_frame(&mut self) -> Option<&[i16]> {
-
         loop {
             let remaining = &self.data[self.index..];
-
             match self.decoder.decode(remaining, OutputFormat::Auto(&mut self.buffer)) {
                 Ok(r) => {
                     self.index += r.bytes_read;
                     return Some(&self.buffer[..(r.samples_written * r.channels as usize)]);
+                }
+                Err(Error::NotEnoughData { .. }) => return None,
+                Err(Error::OutputBufferTooSmall { .. }) => unreachable!(),
+                Err(Error::BadData(reason)) => {
+                    // TODO skip to the next syncword
+                    panic!("Failed to decode frame: {:?}", reason);
+                }
+            }
+        }
+    }
+
+    pub fn next_frame_lr(&mut self) -> Option<[&[i16]; 2]> {
+        loop {
+            let remaining = &self.data[self.index..];
+            let (left, right) = self.buffer.split_at_mut(Decoder::MAX_SAMPLES);
+            match self.decoder.decode(remaining, OutputFormat::Planar(left, right)) {
+                Ok(r) => {
+                    self.index += r.bytes_read;
+                    if r.channels == 1 {
+                        return Some([&left[..r.samples_written], &left[..r.samples_written]]);
+                    } else {
+                        return Some([&left[..r.samples_written], &right[..r.samples_written]])
+                    }
                 }
                 Err(Error::NotEnoughData { .. }) => return None,
                 Err(Error::OutputBufferTooSmall { .. }) => unreachable!(),
