@@ -52,23 +52,17 @@ impl Decoder {
         let nr_of_samples = nch * header.blocks * header.subbands;
         self.buffer.resize(nr_of_samples as usize, 0);
 
-        decode(remaining, &mut self.buffer).unwrap();
-        unsafe {
-            let mut frame = zeroed();
-            assert_eq!(sbc_decode(
-                &mut *self.sbc,
-                remaining.as_ptr().cast(),
-                remaining.len() as _,
-                &mut frame,
-                self.buffer.as_mut_ptr(),
-                nch as i32,
-                self.buffer.as_mut_ptr().add(1),
-                2
-            ), 0);
-            self.index += frame_size;
+        decode(
+            remaining,
+            &mut *self.sbc,
+            self.buffer.as_mut_ptr(),
+            nch as i32,
+            unsafe { self.buffer.as_mut_ptr().add(1) },
+            2
+        ).unwrap();
+        self.index += frame_size;
 
-            Some(&self.buffer)
-        }
+        Some(&self.buffer)
 
     }
 
