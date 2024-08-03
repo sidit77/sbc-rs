@@ -1,12 +1,12 @@
 use crate::bits2::Bits;
-use crate::decoder::{Bam, ChannelMode, MAX_CHANNELS, MAX_SAMPLES, MAX_SUBBANDS, SbcError, SbcHeader};
+use crate::decoder::{Bam, ChannelMode, Error, MAX_CHANNELS, MAX_SAMPLES, MAX_SUBBANDS, Reason, SbcHeader};
 
 pub fn decode_frame(
     bits: &mut Bits,
     header: &SbcHeader,
     samples: &mut [[i16; MAX_SAMPLES]; MAX_CHANNELS],
     scale: &mut [i32; MAX_CHANNELS],
-) -> Result<(), SbcError> {
+) -> Result<(), Error> {
     const RANGE_SCALE: [i32; 16] = [
         0xfffffff, 0x5555556, 0x2492492, 0x1111111, 0x0842108, 0x0410410, 0x0204081, 0x0101010,
         0x0080402, 0x0040100, 0x0020040, 0x0010010, 0x0008004, 0x0004001, 0x0002000, 0x0001000,
@@ -128,7 +128,7 @@ pub fn decode_frame(
 
     let padding_nbits = 8 - bits.pos() % 8;
     if padding_nbits < 8 {
-        ensure!(bits.get_bits(padding_nbits as u32) == 0);
+        ensure!(bits.get_bits(padding_nbits as u32) == 0, Reason::UnexpectedData);
     }
     Ok(())
 }

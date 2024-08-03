@@ -1,4 +1,4 @@
-use crate::decoder::{Decoder, OutputFormat, SbcHeader};
+use crate::decoder::{Decoder, Error, OutputFormat};
 
 mod bits2;
 mod decoder;
@@ -32,20 +32,23 @@ impl BufferedDecoder {
     }
 
     pub fn next_frame(&mut self) -> Option<&[i16]> {
-        let remaining = &self.data[self.index..];
-        if remaining.len() < SbcHeader::SIZE { return None; }
 
-        let header = SbcHeader::read(remaining).unwrap();
-        let frame_size = header.frame_size();
-        if remaining.len() < frame_size { return None; }
+        loop {
+            let remaining = &self.data[self.index..];
 
-        let r = self.decoder.decode(
-            remaining,
-            OutputFormat::interleaved(&mut self.buffer, header.channels() == 1)
-        ).unwrap();
-        self.index += r.bytes_read;
-
-        Some(&self.buffer[..(r.samples_written * r.channels as usize)])
+            match self.decoder.decode(remaining, OutputFormat::Auto(&mut self.buffer)) {
+                Ok(r) => {
+                    self.index += r.bytes_read;
+                    return Some(&self.buffer[..(r.samples_written * r.channels as usize)]);
+                }
+                Err(Error::NotEnoughData { .. }) => return None,
+                Err(Error::OutputBufferTooSmall { .. }) => unreachable!(),
+                Err(Error::BadData(reason)) => {
+                    // TODO skip to the next syncword
+                    panic!("Failed to decode frame: {:?}", reason);
+                }
+            }
+        }
     }
 
 }

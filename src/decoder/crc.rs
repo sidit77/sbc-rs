@@ -1,6 +1,6 @@
-use crate::decoder::{ChannelMode, SbcError, SbcHeader};
+use crate::decoder::{ChannelMode, Error, Reason, SbcHeader};
 
-pub fn compute_crc(header: &SbcHeader, data: &[u8]) -> Result<u8, SbcError> {
+pub fn compute_crc(header: &SbcHeader, data: &[u8]) -> Result<u8, Error> {
     /* Look-up table par 8 bits
      * Generator polynomial G(X) = X^8 + X^4 + X^3 + X^2 + 1 (0x1d) */
     const CRC_TABLE: [u8; 256] = [
@@ -44,7 +44,7 @@ pub fn compute_crc(header: &SbcHeader, data: &[u8]) -> Result<u8, SbcError> {
     } else {
         0
     });
-    ensure!(data.len() >= (((4 * 8) + nbit + 7) >> 3) as usize);
+    ensure!(data.len() >= (((4 * 8) + nbit + 7) >> 3) as usize, Reason::InvalidCrc);
     let mut crc: u8 = 0xf;
     crc = CRC_TABLE[(crc ^ data[1]) as usize];
     crc = CRC_TABLE[(crc ^ data[2]) as usize];

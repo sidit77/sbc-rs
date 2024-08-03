@@ -1,5 +1,5 @@
 use crate::bits2::Bits;
-use crate::decoder::{Bam, ChannelMode, Frequency, SbcError, SbcHeader};
+use crate::decoder::{Bam, ChannelMode, Error, Frequency, Reason, SbcHeader};
 
 impl SbcHeader {
     const fn new_msbc() -> Self {
@@ -15,10 +15,14 @@ impl SbcHeader {
         }
     }
 
-    pub fn read(data: &[u8]) -> Result<Self, SbcError> {
+    pub fn read(data: &[u8]) -> Result<Self, Error> {
         let mut bits = Bits::new(
             crate::bits2::Mode::Read,
-            data.get(..Self::SIZE).ok_or_else(SbcError::new)?,
+            data.get(..Self::SIZE)
+                .ok_or(Error::NotEnoughData {
+                    expected: Self::SIZE,
+                    actual: data.len(),
+                })?,
         );
 
         /* --- Decode header ---
@@ -38,7 +42,7 @@ impl SbcHeader {
                 1 => Frequency::Hz32k,
                 2 => Frequency::Hz44k,
                 3 => Frequency::Hz48k,
-                _ => return Err(SbcError::new()),
+                _ => unreachable!(),
             };
             let blocks = (1 + bits.get_bits(2)) << 2;
             let mode = match bits.get_bits(2) {
@@ -46,12 +50,12 @@ impl SbcHeader {
                 1 => ChannelMode::DualChannel,
                 2 => ChannelMode::Stereo,
                 3 => ChannelMode::JointStereo,
-                _ => return Err(SbcError::new()),
+                _ => unreachable!(),
             };
             let bam = match bits.get_bits(1) {
                 0 => Bam::Loudness,
                 1 => Bam::Snr,
-                _ => return Err(SbcError::new()),
+                _ => unreachable!(),
             };
             let subbands = (1 + bits.get_bits(1)) << 2;
             let bitpool = bits.get_bits(8);
@@ -67,13 +71,13 @@ impl SbcHeader {
                 crc: 0,
             }
         } else {
-            return Err(SbcError::new());
+            return Err(Error::BadData(Reason::InvalidSyncWord));
         };
         frame.crc = bits.get_bits(8) as u8;
 
         /* --- Check bitpool value and return --- */
-        ensure!(frame.blocks - 4 <= 12 && (frame.msbc || frame.blocks % 4 == 0));
-        ensure!(frame.subbands - 4 <= 4 && frame.subbands % 4 == 0);
+        ensure!(frame.blocks - 4 <= 12 && (frame.msbc || frame.blocks % 4 == 0), Reason::InvalidBlockLength);
+        ensure!(frame.subbands - 4 <= 4 && frame.subbands % 4 == 0, Reason::InvalidSubbands);
         let two_channels = u32::from(frame.mode != ChannelMode::Mono);
         let dual_mode = u32::from(frame.mode == ChannelMode::DualChannel);
         let joint_mode: bool = frame.mode == ChannelMode::JointStereo;
@@ -87,7 +91,7 @@ impl SbcHeader {
                 true => max_bits / (frame.blocks << dual_mode),
                 false => (16 << stereo_mode) * frame.subbands,
             };
-        ensure!(frame.bitpool <= max_bitpool);
+        ensure!(frame.bitpool <= max_bitpool, Reason::InvalidBitpoolValue);
 
         Ok(frame)
     }
