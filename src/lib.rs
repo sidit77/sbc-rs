@@ -1,4 +1,4 @@
-use crate::decoder::{Decoder, Error, OutputFormat};
+pub use crate::decoder::{Decoder, Error, OutputFormat};
 
 mod bits2;
 mod decoder;
